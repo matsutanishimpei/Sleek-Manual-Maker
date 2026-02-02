@@ -10,6 +10,7 @@
 /records/
 *.log
 *.jsonl
+*.txt
 
 # Temporary and backup files
 *~
