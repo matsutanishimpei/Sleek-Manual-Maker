@@ -179,7 +179,7 @@ impl RecorderApp {
                     // ブラウザで自動的に開く
                     if let Err(e) = open::that(&path) {
                         eprintln!("ブラウザを開けませんでした: {}", e);
-                        self.log_messages.push_back(format!("⚠️ ブラウザ起動エラー: {}", e));
+                        self.log_messages.push_back(format!("⚠ ブラウザ起動エラー: {}", e));
                     }
                 },
                 Err(e) => {
@@ -195,6 +195,22 @@ impl RecorderApp {
         // log_messages はここでクリアしない
         // → 「✅ HTML生成完了」等のメッセージを Idle 画面でも確認できる
         // → 次の録画開始時に start_recording() の clear() で消去される
+    }
+
+    fn cancel_recording(&mut self) {
+        // 録画イベントの監視フラグを確実に停止する
+        self.is_recording.store(false, Ordering::Relaxed);
+
+        if let Some(ref folder) = self.current_session_folder {
+            // セッションフォルダを削除してデータを破棄（エラーは無視）
+            let _ = std::fs::remove_dir_all(folder);
+        }
+        
+        self.state = AppState::Idle;
+        self.current_session_folder = None;
+        self.review_logs.clear();
+        self.log_messages.clear();
+        self.log_messages.push_back("⚠ 録画をキャンセルし、データを破棄しました。".to_string());
     }
 
     fn render_idle(&mut self, ctx: &egui::Context) {
@@ -254,9 +270,18 @@ impl RecorderApp {
             );
             ui.add_space(10.0);
 
-            if ui.add(egui::Button::new("⏹ 録画停止").min_size(egui::vec2(120.0, 40.0))).clicked() {
-                self.stop_recording();
-            }
+            ui.horizontal(|ui| {
+                if ui.add(egui::Button::new("⏹ 録画停止").min_size(egui::vec2(120.0, 40.0))).clicked() {
+                    self.stop_recording();
+                }
+                ui.add_space(20.0);
+                if ui.add(egui::Button::new(egui::RichText::new("🗑 録画をキャンセル").color(egui::Color32::WHITE))
+                    .fill(egui::Color32::from_rgb(200, 50, 50))
+                    .min_size(egui::vec2(150.0, 40.0)))
+                    .clicked() {
+                    self.cancel_recording();
+                }
+            });
 
             ui.add_space(10.0);
             ui.separator();
@@ -285,117 +310,129 @@ impl RecorderApp {
             ui.label(format!("📊 記録数: {}件", self.review_logs.len()));
             ui.add_space(10.0);
             
-            if ui.add(egui::Button::new("✅ 保存して終了").min_size(egui::vec2(150.0, 40.0))).clicked() {
-                self.finish_review();
-            }
+            ui.horizontal(|ui| {
+                if ui.add(egui::Button::new("✅ 保存して終了").min_size(egui::vec2(150.0, 40.0))).clicked() {
+                    self.finish_review();
+                }
+                ui.add_space(20.0);
+                if ui.add(egui::Button::new(egui::RichText::new("🗑 キャンセルして破棄").color(egui::Color32::WHITE))
+                    .fill(egui::Color32::from_rgb(200, 50, 50))
+                    .min_size(egui::vec2(150.0, 40.0)))
+                    .clicked() {
+                    self.cancel_recording();
+                }
+            });
             
             ui.add_space(10.0);
             ui.separator();
             ui.add_space(10.0);
             
-            // 画像グリッド表示
+            // 画像グリッド表示（仮想スクロールでメモリを節約）
+            let total_rows = self.review_logs.len();
+            let row_height = 720.0; // 画像(600) + 各種テキスト・余白の見積もり高さ
+
+            let mut to_delete = None;
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])  // 自動縮小を無効化
-                .show(ui, |ui| {
-                let mut to_delete = None;
-                
-                for (index, log) in self.review_logs.iter().enumerate() {
-                    ui.group(|ui| {
-                        ui.vertical(|ui| {
-                            // ヘッダー情報
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(format!("#{}", index + 1)).size(16.0).strong());
-                                ui.label(&log.action);
-                                if let (Some(x), Some(y)) = (log.x, log.y) {
-                                    ui.label(egui::RichText::new(format!("座標: ({}, {})", x, y)).color(egui::Color32::from_rgb(100, 100, 255)));
-                                }
-                            });
-                            
-                            ui.add_space(10.0);
-                            
-                            // 画像表示（3倍サイズ）
-                            if let Some(ref folder) = self.current_session_folder {
-                                let image_path = folder.join(&log.image_path);
-                                if image_path.exists() {
-                                    let uri = format!("file://{}", image_path.display());
-                                    
-                                    // 画像を大きく表示（900x600の範囲内で縦横比を保持）
-                                    let target_size = egui::vec2(900.0, 600.0);
-                                    let response = ui.add(
-                                        egui::Image::new(&uri)
-                                            .fit_to_exact_size(target_size)
-                                            .maintain_aspect_ratio(true)
-                                    );
-                                    
-                                    // クリック位置に赤い円を描画
+                .show_rows(ui, row_height, total_rows, |ui, row_range| {
+                    for index in row_range {
+                        let log = &self.review_logs[index];
+                        ui.group(|ui| {
+                            ui.vertical(|ui| {
+                                // ヘッダー情報
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("#{}", index + 1)).size(16.0).strong());
+                                    ui.label(&log.action);
                                     if let (Some(x), Some(y)) = (log.x, log.y) {
-                                        let rect = response.rect;
+                                        ui.label(egui::RichText::new(format!("座標: ({}, {})", x, y)).color(egui::Color32::from_rgb(100, 100, 255)));
+                                    }
+                                });
+                                
+                                ui.add_space(10.0);
+                                
+                                // 画像表示（3倍サイズ）
+                                if let Some(ref folder) = self.current_session_folder {
+                                    let image_path = folder.join(&log.image_path);
+                                    if image_path.exists() {
+                                        let uri = format!("file://{}", image_path.display());
+                                        
+                                        // 画像を大きく表示（900x600の範囲内で縦横比を保持）
+                                        let target_size = egui::vec2(900.0, 600.0);
+                                        let response = ui.add(
+                                            egui::Image::new(&uri)
+                                                .fit_to_exact_size(target_size)
+                                                .maintain_aspect_ratio(true)
+                                        );
+                                        
+                                        // クリック位置に赤い円を描画
+                                        if let (Some(x), Some(y)) = (log.x, log.y) {
+                                            let rect = response.rect;
 
-                                        // 毎フレームのimage::openを廃止:
-                                        // OperationLogに保存済みのwidth/heightを使用
-                                        if let (Some(w), Some(h)) = (log.width, log.height) {
-                                            let img_w = w as f32;
-                                            let img_h = h as f32;
+                                            // 毎フレームのimage::openを廃止:
+                                            // OperationLogに保存済みのwidth/heightを使用
+                                            if let (Some(w), Some(h)) = (log.width, log.height) {
+                                                let img_w = w as f32;
+                                                let img_h = h as f32;
 
-                                            // 実際に描画されている領域を計算（object-fit: contain相当）
-                                            let img_aspect = img_w / img_h;
-                                            let rect_aspect = rect.width() / rect.height();
+                                                // 実際に描画されている領域を計算（object-fit: contain相当）
+                                                let img_aspect = img_w / img_h;
+                                                let rect_aspect = rect.width() / rect.height();
 
-                                            let (display_w, display_h) = if img_aspect > rect_aspect {
-                                                // 横長：横幅に合わせて縦に余白
-                                                (rect.width(), rect.width() / img_aspect)
-                                            } else {
-                                                // 縦長：縦幅に合わせて横に余白
-                                                (rect.height() * img_aspect, rect.height())
-                                            };
+                                                let (display_w, display_h) = if img_aspect > rect_aspect {
+                                                    // 横長：横幅に合わせて縦に余白
+                                                    (rect.width(), rect.width() / img_aspect)
+                                                } else {
+                                                    // 縦長：縦幅に合わせて横に余白
+                                                    (rect.height() * img_aspect, rect.height())
+                                                };
 
-                                            // 画像の描画開始位置（中央寄せ）
-                                            let offset_x = rect.left() + (rect.width() - display_w) / 2.0;
-                                            let offset_y = rect.top() + (rect.height() - display_h) / 2.0;
+                                                // 画像の描画開始位置（中央寄せ）
+                                                let offset_x = rect.left() + (rect.width() - display_w) / 2.0;
+                                                let offset_y = rect.top() + (rect.height() - display_h) / 2.0;
 
-                                            // クリック位置を画面座標に変換
-                                            let scale = display_w / img_w;
-                                            let click_x = offset_x + (x as f32 * scale);
-                                            let click_y = offset_y + (y as f32 * scale);
+                                                // クリック位置を画面座標に変換
+                                                let scale = display_w / img_w;
+                                                let click_x = offset_x + (x as f32 * scale);
+                                                let click_y = offset_y + (y as f32 * scale);
 
-                                            let center = egui::pos2(click_x, click_y);
+                                                let center = egui::pos2(click_x, click_y);
 
-                                            // 大きな赤い円を描画（半径30px）
-                                            ui.painter().circle_stroke(
-                                                center,
-                                                30.0,
-                                                egui::Stroke::new(4.0, egui::Color32::from_rgb(255, 0, 0))
-                                            );
+                                                // 大きな赤い円を描画（半径30px）
+                                                ui.painter().circle_stroke(
+                                                    center,
+                                                    30.0,
+                                                    egui::Stroke::new(4.0, egui::Color32::from_rgb(255, 0, 0))
+                                                );
 
-                                            // 中心点
-                                            ui.painter().circle_filled(
-                                                center,
-                                                6.0,
-                                                egui::Color32::from_rgb(255, 0, 0)
-                                            );
+                                                // 中心点
+                                                ui.painter().circle_filled(
+                                                    center,
+                                                    6.0,
+                                                    egui::Color32::from_rgb(255, 0, 0)
+                                                );
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            
-                            ui.add_space(10.0);
-                            
-                            // 削除ボタン
-                            if ui.add(egui::Button::new("🗑️ 削除").min_size(egui::vec2(100.0, 30.0))).clicked() {
-                                to_delete = Some(index);
-                            }
+                                
+                                ui.add_space(10.0);
+                                
+                                // 削除ボタン
+                                if ui.add(egui::Button::new("🗑️ 削除").min_size(egui::vec2(100.0, 30.0))).clicked() {
+                                    to_delete = Some(index);
+                                }
+                            });
                         });
-                    });
-                    
-                    ui.add_space(15.0);
-                }
+                        
+                        ui.add_space(15.0);
+                    }
+                });
                 
                 // 削除処理（イテレーション外で実行）
                 if let Some(index) = to_delete {
                     self.delete_image(index);
                 }
             });
-        });
     }
 }
 
@@ -451,6 +488,10 @@ impl eframe::App for RecorderApp {
             AppState::Review => self.render_review(ctx),
         }
 
-        ctx.request_repaint();
+        // 録画中はリアルタイム更新、待機・レビュー中は低頻度で十分
+        match self.state {
+            AppState::Recording => ctx.request_repaint(),
+            _ => ctx.request_repaint_after(std::time::Duration::from_millis(200)),
+        }
     }
 }

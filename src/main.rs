@@ -12,13 +12,29 @@ use rdev::{listen, Button, EventType, Key};
 use screenshots::Screen;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use app::RecorderApp;
 use recorder::save_capture_and_log;
 use types::{CaptureData, CaptureMessage, DisplayInfo};
+
+/// マウス座標(f64, f64) を AtomicU64 に pack（x/y を i32 に丸めて上位/下位 32bit に格納）
+#[inline]
+fn pack_mouse(x: f64, y: f64) -> u64 {
+    let xi = (x as i32) as u32 as u64;
+    let yi = (y as i32) as u32 as u64;
+    (xi << 32) | yi
+}
+
+/// AtomicU64 から (f64, f64) に unpack
+#[inline]
+fn unpack_mouse(v: u64) -> (f64, f64) {
+    let x = (v >> 32) as u32 as i32 as f64;
+    let y = (v as u32) as i32 as f64;
+    (x, y)
+}
 
 fn main() -> Result<()> {
     // recordsディレクトリの作成
@@ -80,11 +96,16 @@ fn main() -> Result<()> {
     let current_session_folder_for_gui   = Arc::clone(&current_session_folder);
 
     // バックグラウンド保存スレッド（Arc<Mutex>不要：スレッドが1つだけなのでmoveで直接渡せる）
-    let (bg_sender, bg_receiver) = mpsc::channel::<CaptureMessage>();
+    // 異常時にメモリが無尽蔵に増えるのを防ぐため、最大10フレームまでキューイングする sync_channel を使用
+    let (bg_sender, bg_receiver) = mpsc::sync_channel::<CaptureMessage>(10);
+    let log_sender_for_bg = log_sender.clone();
+    
     thread::spawn(move || {
         while let Ok(msg) = bg_receiver.recv() {
             if let Err(e) = save_capture_and_log(msg) {
-                eprintln!("保存エラー: {}", e);
+                let err_msg = format!("❌ 画像の保存に失敗しました（容量不足など）: {}", e);
+                eprintln!("{}", err_msg);
+                let _ = log_sender_for_bg.send(err_msg);
             }
         }
     });
@@ -99,14 +120,13 @@ fn main() -> Result<()> {
         let current_session_folder = Arc::clone(&current_session_folder_for_event);
 
         thread::spawn(move || {
-            let last_mouse_pos = Arc::new(Mutex::new((0.0, 0.0)));
+            // Mutex ではなく AtomicU64 で lock-free にマウス座標を共有
+            let last_mouse_pos = Arc::new(AtomicU64::new(0));
             let last_mouse_pos_clone = Arc::clone(&last_mouse_pos);
 
             if let Err(e) = listen(move |event| {
                 if let EventType::MouseMove { x, y } = event.event_type {
-                    if let Ok(mut pos) = last_mouse_pos_clone.lock() {
-                        *pos = (x, y);
-                    }
+                    last_mouse_pos_clone.store(pack_mouse(x, y), Ordering::Relaxed);
                 }
 
                 if !is_recording.load(Ordering::Relaxed) {
@@ -121,7 +141,7 @@ fn main() -> Result<()> {
                 };
 
                 let mouse_pos = if needs_mouse_pos {
-                    last_mouse_pos_clone.lock().ok().map(|pos| *pos)
+                    Some(unpack_mouse(last_mouse_pos_clone.load(Ordering::Relaxed)))
                 } else {
                     None
                 };
@@ -215,9 +235,10 @@ fn main() -> Result<()> {
                         image_index,
                     };
 
+                    // キューが一杯ならスキップ（OSのフックやメモリをフリーズさせないため）
                     bg_sender
-                        .send(msg)
-                        .map_err(|_| anyhow::anyhow!("保存スレッドへの送信に失敗: {}", action))?;
+                        .try_send(msg)
+                        .map_err(|_| anyhow::anyhow!("【警告】保存処理が追いついていません。このクリックはスキップされました: {}", action))?;
 
                     log_sender
                         .send(format!("[{}] {} を記録", timestamp, action))

@@ -1,5 +1,7 @@
 use crate::types::{CaptureMessage, OperationLog};
 use anyhow::Result;
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::ImageEncoder;
 use std::fs::OpenOptions;
 use std::io::Write;
 
@@ -18,8 +20,17 @@ pub fn save_capture_and_log(msg: CaptureMessage) -> Result<()> {
     let filename = format!("image_{:03}.png", image_index);
     let image_path = session_folder.join(&filename);
 
-    // 画像保存
-    capture.image_buffer.save(&image_path)?;
+    // 画像保存（CompressionType::Fast でエンコード速度優先）
+    {
+        let file = std::fs::File::create(&image_path)?;
+        let encoder = PngEncoder::new_with_quality(file, CompressionType::Fast, FilterType::Sub);
+        encoder.write_image(
+            capture.image_buffer.as_raw(),
+            capture.image_buffer.width(),
+            capture.image_buffer.height(),
+            image::ColorType::Rgba8.into(),
+        )?;
+    }
 
     // マウス座標を、対象ディスプレイ（画像）内の物理ピクセル相対座標に変換する
     // has_mouse_pos フラグで座標の有無を明示的に判定（原点クリックでも正しく動作）
