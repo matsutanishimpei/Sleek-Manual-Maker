@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-02
+
+### Added
+- **GUIアプリ化**: `egui` と `eframe` を採用し、直感的なデスクトップアプリとして統合
+  - アプリ内で「録画開始」「プレビュー・削除」「マニュアル生成」の全工程が完結
+  - 削除したステップを反映した手順書をその場で生成可能に
+- **キャンセル機能**: 録画中・レビュー中に「録画をキャンセル」ボタンを追加し、不要なセッションデータを即座に破棄可能に
+- **エラー通知連携**: ディスクフル時などの画像保存エラーをGUIログに表示する機能を追加
+
+### Changed
+- **ディレクトリ構造の進化**: 録画ごとに `records/YYYYMMDD-HHMMSS/` フォルダを作成し、ログ（`session_log.jsonl`）と画像群（`image_001.png...`）を整理
+- **メモリ管理の最適化**: 
+  - レビュー画面（画像一覧）に `egui` の仮想スクロール（`show_rows`）を導入し、画像読み込み時やスクロール時のGPUメモリ使用量を大幅に節約
+  - MouseMove 共有用のロックを `Mutex` から `AtomicU64` へ変更し、ホットパスの完全lock-free化を実現
+  - バックグラウンド保存用チャネルを `sync_channel(10)` で制限し、異常時のメモリ溢れを防止
+- **PNGエンコード速度向上**: バックグラウンド保存の圧縮レベルを `Fast` に変更しスループットを改善
+- **GUIのCPU使用率低減**: 待機中やレビュー中の再描画更新頻度を200ms間隔に抑制
+- **コンパイラ警告等修正**: 不必要な `Arc<Mutex>` の削除や、リリースビルド時の最適化設定を追加
+
 ## [0.2.0] - 2026-01-30
 
 ### Added

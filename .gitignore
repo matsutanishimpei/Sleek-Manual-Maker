@@ -29,3 +29,6 @@ Desktop.ini
 /.vscode/
 .idea/
 *.iml
+
+# Custom Scripts
+build.bat

@@ -247,8 +247,63 @@ Screen::all() 呼び出し (20-50ms)
 
 ### 判断
 - **用途**: PC操作のログ記録・マニュアル生成
-- **結論**: マウス操作の記録には1モニターで十分
-- **評価**: トレードオフは許容範囲内
+---
+
+## 第3段階: GUI統合とメモリ・スレッド最適化 (v0.3.0)
+
+### さらなる問題点の発見
+
+CLIベースから `egui` を用いたGUIアプリに統合したことで、新たに以下の問題が浮上しました。
+
+#### 1. レビュー画面でのGPUメモリ爆発
+- **問題**: 録画したすべてのフル解像度画像（各10MB超）が、非表示領域の分まで `egui` のテクスチャとしてGPUにキャッシュされる。
+- **影響**: スクロールするとメモリ使用量が数百MB〜数GBに急増し、クラッシュやシステム全体のフリーズを誘発。
+
+#### 2. Hot-path (MouseMove) のブロッキング遅延
+- **問題**: 1秒間に数百回発生するMouseMoveイベント内で、(f64, f64) 座標の更新に `Mutex` ロックを取得。
+- **影響**: コンテキストスイッチとロックの競合により、OSフックの動作が重くなり、マウスポインタの動作に微細な遅延を引き起こす要因に。
+
+#### 3. PNGエンコード時のスループット低下とキュー溢れ制限の欠如
+- **問題**: `image::save` がデフォルトの高圧縮を使い、バックグラウンドチャネル (`mpsc::channel`) の上限がない。
+- **影響**: 高速連打などに圧縮が追いつかなくなった場合、未処理のRGBA画像が無限にメモリに溜まり続け（バックプレッシャー不在）、最終的にOOM(Out Of Memory)に至る。
+
+### 実装した最適化
+
+#### 1. 仮想スクロールによるUIメモリ節約
+```rust
+// ScrollArea::show() ではなく、表示領域内のインデックスだけを処理する show_rows() に変更
+egui::ScrollArea::vertical().show_rows(ui, row_height, total_rows, |ui, row_range| {
+    for index in row_range {
+        // ... 見えている画像だけを描画
+    }
+});
+```
+- **効果**: 画面外の要素の画像アセット要求が発火しなくなり、GPUテクスチャメモリが「見えている部分（最大2〜3枚分）」のみに限定される。劇的なメモリ低減。
+
+#### 2. AtomicU64 を用いた Lock-free 座標共有
+```rust
+// (i32, i32) に丸めて u64 にパックする
+let last_mouse_pos = Arc::new(AtomicU64::new(0));
+
+// MouseMove (Hook Thread)
+last_mouse_pos_clone.store(pack_mouse(x, y), Ordering::Relaxed);
+
+// ButtonPress (Capture Logic)
+let pos = unpack_mouse(last_mouse_pos_clone.load(Ordering::Relaxed));
+```
+- **効果**: 最高の頻度で呼ばれるパスでのOSレベルのロック取得を完全に排除。
+
+#### 3. sync_channel によるバックプレッシャーと Fast 圧縮
+```rust
+// 容量制限付き非同期チャネル
+let (bg_sender, bg_receiver) = mpsc::sync_channel::<CaptureMessage>(10);
+
+bg_sender.try_send(msg)?; // 溢れたら「スキップ」し、OS全体をブロックしない
+
+// 高速圧縮オプションの使用
+let encoder = PngEncoder::new_with_quality(file, CompressionType::Fast, FilterType::Sub);
+```
+- **効果**: クリック連打時も即座にチャネルに送りつつ、限界（10フレーム分）を超えたら「警告を出し要求を安全に捨てる（スキップ）」ことでメモリ爆発を防ぐ。画像保存速度自体もFast圧縮により大幅向上。
 
 ---
 
