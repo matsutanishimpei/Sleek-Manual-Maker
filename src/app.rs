@@ -1,5 +1,6 @@
 use chrono::Local;
 use eframe::egui;
+use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
@@ -17,7 +18,7 @@ pub struct RecorderApp {
     state: AppState,
     is_recording: Arc<AtomicBool>,
     log_receiver: mpsc::Receiver<String>,
-    log_messages: Vec<String>,
+    log_messages: VecDeque<String>,
     current_session_folder: Option<PathBuf>,
     review_logs: Vec<OperationLog>,
     image_counter: Arc<Mutex<usize>>,
@@ -88,7 +89,7 @@ impl RecorderApp {
             state: AppState::Idle,
             is_recording,
             log_receiver,
-            log_messages: Vec::new(),
+            log_messages: VecDeque::new(),
             current_session_folder: None,
             review_logs: Vec::new(),
             image_counter,
@@ -174,16 +175,16 @@ impl RecorderApp {
         if let Some(ref folder) = self.current_session_folder {
             match generator::generate_html(folder, &self.review_logs) {
                 Ok(path) => {
-                    self.log_messages.push(format!("✅ HTMLマニュアルを生成しました: {:?}", path));
+                    self.log_messages.push_back(format!("✅ HTMLマニュアルを生成しました: {:?}", path));
                     // ブラウザで自動的に開く
                     if let Err(e) = open::that(&path) {
                         eprintln!("ブラウザを開けませんでした: {}", e);
-                        self.log_messages.push(format!("⚠️ ブラウザ起動エラー: {}", e));
+                        self.log_messages.push_back(format!("⚠️ ブラウザ起動エラー: {}", e));
                     }
                 },
                 Err(e) => {
                     eprintln!("HTML生成エラー: {}", e);
-                    self.log_messages.push(format!("❌ HTML生成エラー: {}", e));
+                    self.log_messages.push_back(format!("❌ HTML生成エラー: {}", e));
                 }
             }
         }
@@ -191,31 +192,53 @@ impl RecorderApp {
         self.state = AppState::Idle;
         self.current_session_folder = None;
         self.review_logs.clear();
-        self.log_messages.clear();
+        // log_messages はここでクリアしない
+        // → 「✅ HTML生成完了」等のメッセージを Idle 画面でも確認できる
+        // → 次の録画開始時に start_recording() の clear() で消去される
     }
 
     fn render_idle(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("🎥 PC操作ロガー");
             ui.add_space(20.0);
-            
+
             ui.label(
                 egui::RichText::new("待機中")
                     .size(20.0)
                     .color(egui::Color32::from_rgb(100, 100, 100))
             );
             ui.add_space(20.0);
-            
+
             if ui.add(egui::Button::new("▶ 録画開始").min_size(egui::vec2(150.0, 50.0))).clicked() {
                 self.start_recording();
             }
-            
+
             ui.add_space(20.0);
             ui.separator();
             ui.add_space(10.0);
-            
+
             ui.label("💡 録画開始ボタンを押すと、マウスクリックと右クリックを記録します");
             ui.label("📁 記録は records/YYYYMMDD-HHMMSS/ フォルダに保存されます");
+
+            // 前回セッションのログメッセージを最新5件表示
+            if !self.log_messages.is_empty() {
+                ui.add_space(20.0);
+                ui.separator();
+                ui.add_space(10.0);
+                ui.label(
+                    egui::RichText::new("📋 前回セッションのログ:")
+                        .color(egui::Color32::from_rgb(120, 120, 120))
+                );
+                ui.add_space(5.0);
+                let recent: Vec<&String> = self.log_messages.iter().rev().take(5).collect();
+                for msg in recent.into_iter().rev() {
+                    ui.label(
+                        egui::RichText::new(msg)
+                            .size(13.0)
+                            .color(egui::Color32::from_rgb(80, 80, 80))
+                    );
+                }
+            }
         });
     }
     
@@ -307,16 +330,17 @@ impl RecorderApp {
                                     // クリック位置に赤い円を描画
                                     if let (Some(x), Some(y)) = (log.x, log.y) {
                                         let rect = response.rect;
-                                        
-                                        // 画像の実際のサイズを取得
-                                        if let Ok(img) = image::open(&image_path) {
-                                            let img_w = img.width() as f32;
-                                            let img_h = img.height() as f32;
-                                            
+
+                                        // 毎フレームのimage::openを廃止:
+                                        // OperationLogに保存済みのwidth/heightを使用
+                                        if let (Some(w), Some(h)) = (log.width, log.height) {
+                                            let img_w = w as f32;
+                                            let img_h = h as f32;
+
                                             // 実際に描画されている領域を計算（object-fit: contain相当）
                                             let img_aspect = img_w / img_h;
                                             let rect_aspect = rect.width() / rect.height();
-                                            
+
                                             let (display_w, display_h) = if img_aspect > rect_aspect {
                                                 // 横長：横幅に合わせて縦に余白
                                                 (rect.width(), rect.width() / img_aspect)
@@ -324,7 +348,7 @@ impl RecorderApp {
                                                 // 縦長：縦幅に合わせて横に余白
                                                 (rect.height() * img_aspect, rect.height())
                                             };
-                                            
+
                                             // 画像の描画開始位置（中央寄せ）
                                             let offset_x = rect.left() + (rect.width() - display_w) / 2.0;
                                             let offset_y = rect.top() + (rect.height() - display_h) / 2.0;
@@ -333,16 +357,16 @@ impl RecorderApp {
                                             let scale = display_w / img_w;
                                             let click_x = offset_x + (x as f32 * scale);
                                             let click_y = offset_y + (y as f32 * scale);
-                                            
+
                                             let center = egui::pos2(click_x, click_y);
-                                            
+
                                             // 大きな赤い円を描画（半径30px）
                                             ui.painter().circle_stroke(
                                                 center,
                                                 30.0,
                                                 egui::Stroke::new(4.0, egui::Color32::from_rgb(255, 0, 0))
                                             );
-                                            
+
                                             // 中心点
                                             ui.painter().circle_filled(
                                                 center,
@@ -400,9 +424,9 @@ impl eframe::App for RecorderApp {
 
             // GUIバッファに追加
             for msg in new_messages {
-                self.log_messages.push(msg);
+                self.log_messages.push_back(msg);
                 if self.log_messages.len() > 100 {
-                    self.log_messages.remove(0);
+                    self.log_messages.pop_front();
                 }
             }
         }

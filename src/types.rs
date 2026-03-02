@@ -7,27 +7,36 @@ use std::path::PathBuf;
 pub struct DisplayInfo {
     pub x: i32,
     pub y: i32,
-    pub width: u32,
-    pub height: u32,
+    pub width: u32,      // 物理ピクセル（実際の画像の幅）
+    pub height: u32,     // 物理ピクセル（実際の画像の高さ）
+    pub scale_factor: f32, // DPIスケール（例: 125% → 1.25）
     pub id: u32,
 }
 
 impl DisplayInfo {
+    /// rdev物理座標がこのディスプレイの物理範囲内に含まれるか判定
+    /// display.x/y は物理座標、width/height は論理ピクセル
+    /// 物理終端 = x + width * scale_factor
     pub fn contains_point(&self, x: f64, y: f64) -> bool {
         let x = x as i32;
         let y = y as i32;
+        let physical_w = (self.width as f32 * self.scale_factor) as i32;
+        let physical_h = (self.height as f32 * self.scale_factor) as i32;
         x >= self.x
-            && x < self.x + self.width as i32
+            && x < self.x + physical_w
             && y >= self.y
-            && y < self.y + self.height as i32
+            && y < self.y + physical_h
     }
 
-    // 点からディスプレイ矩形までの距離（の2乗）を計算
+    // 点からディスプレイ物理矩形までの距離（の2乗）を計算
+    // 全て物理座標空間で比較
     pub fn distance_sq(&self, x: f64, y: f64) -> f64 {
         let min_x = self.x as f64;
-        let max_x = (self.x + self.width as i32) as f64;
+        let physical_w = self.width as f64 * self.scale_factor as f64;
+        let physical_h = self.height as f64 * self.scale_factor as f64;
+        let max_x = min_x + physical_w;
         let min_y = self.y as f64;
-        let max_y = (self.y + self.height as i32) as f64;
+        let max_y = min_y + physical_h;
 
         let dx = if x < min_x {
             min_x - x
@@ -75,6 +84,7 @@ pub struct OperationLog {
 pub struct CaptureMessage {
     pub capture: CaptureData,
     pub mouse_pos: (f64, f64),
+    pub has_mouse_pos: bool,   // 座標の有無を明示（ゼロ値との区別のため）
     pub timestamp: String,
     pub action: String,
     pub session_folder: PathBuf,
