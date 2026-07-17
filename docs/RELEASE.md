@@ -7,8 +7,8 @@ SleekManualMaker releases are built and published by GitHub Actions.
 Create and push a `v*` tag:
 
 ```bash
-git tag v2.0.1
-git push origin v2.0.1
+git tag v2.0.2
+git push origin v2.0.2
 ```
 
 The `Release` workflow will:
