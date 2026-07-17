@@ -74,7 +74,7 @@ impl RecorderApp {
         
         visuals.window_fill = sumi_black;
         visuals.panel_fill = sumi_black;
-        visuals.extreme_bg_fill = shikkoku;
+        visuals.extreme_bg_color = shikkoku;
         visuals.override_text_color = Some(kinari);
         
         visuals.widgets.noninteractive.bg_fill = sumi_black;
