@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 
 use crate::generator;
@@ -23,6 +23,7 @@ pub struct RecorderApp {
     current_session_folder: Option<PathBuf>,
     review_logs: Vec<OperationLog>,
     image_counter: Arc<Mutex<usize>>,
+    pending_saves: Arc<AtomicUsize>,
 
     session_sender: mpsc::Sender<PathBuf>,
     #[cfg(debug_assertions)]
@@ -36,6 +37,7 @@ impl RecorderApp {
         log_receiver: mpsc::Receiver<String>,
         log_sender: mpsc::Sender<String>,
         image_counter: Arc<Mutex<usize>>,
+        pending_saves: Arc<AtomicUsize>,
         session_sender: mpsc::Sender<PathBuf>,
     ) -> Self {
         // BIZ UDゴシックフォントをバイナリに埋め込み
@@ -136,6 +138,7 @@ impl RecorderApp {
             current_session_folder: None,
             review_logs: Vec::new(),
             image_counter,
+            pending_saves,
             session_sender,
             #[cfg(debug_assertions)]
             debug_monitor_info,
@@ -155,6 +158,7 @@ impl RecorderApp {
         
         self.current_session_folder = Some(session_folder.clone());
         *self.image_counter.lock().unwrap() = 0;
+        self.pending_saves.store(0, Ordering::Release);
         self.log_messages.clear();
         
         // バックグラウンドスレッドにセッションフォルダを送信
@@ -166,17 +170,77 @@ impl RecorderApp {
     
     fn stop_recording(&mut self) {
         self.is_recording.store(false, Ordering::Relaxed);
-        self.state = AppState::Review;
-        
-        // レビュー用にログを読み込み
+        self.state = AppState::Stopping;
+        self.log_messages.push_back("⏳ 保存中の録画データを待機しています...".to_string());
+        self.complete_stop_if_ready();
+    }
+
+    fn load_review_logs(&mut self) {
+        self.review_logs.clear();
         if let Some(ref folder) = self.current_session_folder {
             let log_path = folder.join("session_log.jsonl");
             if let Ok(content) = fs::read_to_string(&log_path) {
-                self.review_logs = content
-                    .lines()
-                    .filter_map(|line| serde_json::from_str(line).ok())
-                    .collect();
+                let mut parse_errors = 0usize;
+                for (line_num, line) in content.lines().enumerate() {
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+
+                    match serde_json::from_str(line) {
+                        Ok(log) => self.review_logs.push(log),
+                        Err(e) => {
+                            parse_errors += 1;
+                            self.log_messages.push_back(format!(
+                                "⚠ session_log.jsonl の {} 行目を読み込めませんでした: {}",
+                                line_num + 1,
+                                e
+                            ));
+                        }
+                    }
+                }
+
+                if parse_errors > 0 {
+                    self.log_messages.push_back(format!(
+                        "⚠ {} 件のログ行をスキップしました。",
+                        parse_errors
+                    ));
+                }
             }
+        }
+    }
+
+    fn complete_stop_if_ready(&mut self) {
+        if self.state == AppState::Stopping && self.pending_saves.load(Ordering::Acquire) == 0 {
+            self.load_review_logs();
+            self.state = AppState::Review;
+            self.log_messages.push_back("✅ 録画データの保存が完了しました。".to_string());
+        }
+    }
+
+    fn discard_current_session(&mut self) {
+        let delete_result = self
+            .current_session_folder
+            .as_ref()
+            .map(std::fs::remove_dir_all);
+
+        self.state = AppState::Idle;
+        self.current_session_folder = None;
+        self.review_logs.clear();
+        self.log_messages.clear();
+
+        match delete_result {
+            Some(Ok(())) | None => {
+                self.log_messages.push_back("⚠ 録画をキャンセルし、データを破棄しました。".to_string());
+            }
+            Some(Err(e)) => {
+                self.log_messages.push_back(format!("⚠ セッションフォルダの削除に失敗しました: {}", e));
+            }
+        }
+    }
+
+    fn complete_cancel_if_ready(&mut self) {
+        if self.state == AppState::Cancelling && self.pending_saves.load(Ordering::Acquire) == 0 {
+            self.discard_current_session();
         }
     }
     
@@ -235,16 +299,13 @@ impl RecorderApp {
         // 録画イベントの監視フラグを確実に停止する
         self.is_recording.store(false, Ordering::Relaxed);
 
-        if let Some(ref folder) = self.current_session_folder {
-            // セッションフォルダを削除してデータを破棄（エラーは無視）
-            let _ = std::fs::remove_dir_all(folder);
+        if self.pending_saves.load(Ordering::Acquire) > 0 {
+            self.state = AppState::Cancelling;
+            self.log_messages.push_back("⏳ 保存中の録画データを待ってから破棄します...".to_string());
+            return;
         }
-        
-        self.state = AppState::Idle;
-        self.current_session_folder = None;
-        self.review_logs.clear();
-        self.log_messages.clear();
-        self.log_messages.push_back("⚠ 録画をキャンセルし、データを破棄しました。".to_string());
+
+        self.discard_current_session();
     }
 
     fn render_idle(&mut self, ctx: &egui::Context) {
@@ -343,6 +404,80 @@ impl RecorderApp {
             ui.add_space(10.0);
 
             ui.label("📋 ログ:");
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    for msg in &self.log_messages {
+                        ui.label(msg);
+                    }
+                });
+        });
+    }
+
+    fn render_stopping(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(egui::RichText::new("🎥 PC操作ロガー").strong());
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                    .size(12.0)
+                    .color(egui::Color32::from_rgb(130, 130, 130)));
+            });
+            ui.add_space(20.0);
+
+            ui.label(
+                egui::RichText::new("保存処理中")
+                    .size(18.0)
+                    .color(egui::Color32::from_rgb(210, 170, 80))
+            );
+            ui.add_space(10.0);
+            ui.label(format!(
+                "残り {} 件の録画データを保存しています...",
+                self.pending_saves.load(Ordering::Acquire)
+            ));
+
+            ui.add_space(20.0);
+            ui.separator();
+            ui.add_space(10.0);
+
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    for msg in &self.log_messages {
+                        ui.label(msg);
+                    }
+                });
+        });
+    }
+
+    fn render_cancelling(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(egui::RichText::new("🎥 PC操作ロガー").strong());
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                    .size(12.0)
+                    .color(egui::Color32::from_rgb(130, 130, 130)));
+            });
+            ui.add_space(20.0);
+
+            ui.label(
+                egui::RichText::new("破棄処理中")
+                    .size(18.0)
+                    .color(egui::Color32::from_rgb(210, 170, 80))
+            );
+            ui.add_space(10.0);
+            ui.label(format!(
+                "残り {} 件の保存処理が終わり次第、データを破棄します...",
+                self.pending_saves.load(Ordering::Acquire)
+            ));
+
+            ui.add_space(20.0);
+            ui.separator();
+            ui.add_space(10.0);
+
             egui::ScrollArea::vertical()
                 .max_height(400.0)
                 .stick_to_bottom(true)
@@ -463,7 +598,8 @@ impl eframe::App for RecorderApp {
             }
         }
 
-
+        self.complete_stop_if_ready();
+        self.complete_cancel_if_ready();
 
         #[cfg(debug_assertions)]
         egui::TopBottomPanel::bottom("debug_panel").show(ctx, |ui| {
@@ -480,12 +616,14 @@ impl eframe::App for RecorderApp {
         match self.state {
             AppState::Idle => self.render_idle(ctx),
             AppState::Recording => self.render_recording(ctx),
+            AppState::Stopping => self.render_stopping(ctx),
+            AppState::Cancelling => self.render_cancelling(ctx),
             AppState::Review => self.render_review(ctx),
         }
 
         // 録画中はリアルタイム更新、待機・レビュー中は低頻度で十分
         match self.state {
-            AppState::Recording => ctx.request_repaint(),
+            AppState::Recording | AppState::Stopping | AppState::Cancelling => ctx.request_repaint(),
             _ => ctx.request_repaint_after(std::time::Duration::from_millis(200)),
         }
     }

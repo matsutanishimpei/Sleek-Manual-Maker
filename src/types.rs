@@ -112,5 +112,7 @@ pub struct RecordTrigger {
 pub enum AppState {
     Idle,
     Recording,
+    Stopping,
+    Cancelling,
     Review,
 }

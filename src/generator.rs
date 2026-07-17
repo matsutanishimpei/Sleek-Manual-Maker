@@ -351,10 +351,26 @@ fn image_to_base64_data_uri(image_path: &PathBuf) -> String {
     }
 }
 
+fn escape_html(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
 fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &OperationLog, step_num: usize) -> Result<()> {
     let step_id = format!("step-{}", step_num);
+    let escaped_image_path = escape_html(&log.image_path);
 
-    writeln!(f, "        <div class=\"step-card\" id=\"{}\" data-image-path=\"{}\">", step_id, log.image_path)?;
+    writeln!(f, "        <div class=\"step-card\" id=\"{}\" data-image-path=\"{}\">", step_id, escaped_image_path)?;
     writeln!(f, "            <div class=\"card-header\">")?;
     writeln!(f, "                <div class=\"step-badge\">STEP {}</div>", step_num)?;
     writeln!(f, "                <div class=\"controls\">")?;
@@ -437,9 +453,13 @@ fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &Operation
         } else {
             w_title.clone()
         };
-        format!("<span class=\"window-badge\">💻 {}</span>{}", truncated_title, friendly_action)
+        format!(
+            "<span class=\"window-badge\">💻 {}</span>{}",
+            escape_html(&truncated_title),
+            escape_html(&friendly_action)
+        )
     } else {
-        friendly_action
+        escape_html(&friendly_action)
     };
 
     writeln!(f, "                    <div class=\"action-title\">{}</div>", title_html)?;

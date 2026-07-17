@@ -11,8 +11,9 @@ use eframe::egui;
 use rdev::{listen, Button, EventType, Key};
 use screenshots::Screen;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
@@ -34,6 +35,50 @@ fn unpack_mouse(v: u64) -> (f64, f64) {
     let x = (v >> 32) as u32 as i32 as f64;
     let y = (v as u32) as i32 as f64;
     (x, y)
+}
+
+fn decrement_pending_saves(pending_saves: &AtomicUsize) {
+    let _ = pending_saves.fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+        Some(count.saturating_sub(1))
+    });
+}
+
+fn write_startup_error(message: &str) {
+    let _ = fs::create_dir_all("log");
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("log/application.log")
+    {
+        let _ = writeln!(file, "{}", message);
+    }
+}
+
+struct PendingWorkGuard<'a> {
+    pending_saves: &'a AtomicUsize,
+    active: bool,
+}
+
+impl<'a> PendingWorkGuard<'a> {
+    fn new(pending_saves: &'a AtomicUsize) -> Self {
+        pending_saves.fetch_add(1, Ordering::AcqRel);
+        Self {
+            pending_saves,
+            active: true,
+        }
+    }
+
+    fn dismiss(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for PendingWorkGuard<'_> {
+    fn drop(&mut self) {
+        if self.active {
+            decrement_pending_saves(self.pending_saves);
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -93,8 +138,17 @@ fn main() -> Result<()> {
     let image_counter_for_event = Arc::clone(&image_counter);
     let image_counter_for_gui   = Arc::clone(&image_counter);
 
+    let pending_saves = Arc::new(AtomicUsize::new(0));
+    let pending_saves_for_event = Arc::clone(&pending_saves);
+    let pending_saves_for_bg = Arc::clone(&pending_saves);
+    let pending_saves_for_gui = Arc::clone(&pending_saves);
+
     // ディスプレイ情報を取得
-    let screens = Screen::all().expect("Failed to get screen information");
+    let screens = Screen::all().map_err(|e| {
+        let message = format!("画面情報の取得に失敗しました: {}", e);
+        write_startup_error(&message);
+        anyhow::anyhow!(message)
+    })?;
     let display_infos: Arc<Vec<DisplayInfo>> = Arc::new(
         screens
             .iter()
@@ -178,6 +232,8 @@ fn main() -> Result<()> {
                 eprintln!("{}", err_msg);
                 let _ = log_sender_for_bg.send(err_msg);
             }
+
+            decrement_pending_saves(&pending_saves_for_bg);
         }
     });
 
@@ -190,6 +246,7 @@ fn main() -> Result<()> {
         let is_recording = Arc::clone(&is_recording_for_event);
         let log_sender = log_sender_for_event;
         let image_counter = Arc::clone(&image_counter_for_event);
+        let pending_saves = Arc::clone(&pending_saves_for_event);
         let current_session_folder = Arc::clone(&current_session_folder_for_event);
         let kb_buffer_clone = Arc::clone(&kb_buffer);
 
@@ -207,6 +264,7 @@ fn main() -> Result<()> {
                 if !is_recording.load(Ordering::Relaxed) {
                     return;
                 }
+                let mut pending_guard = PendingWorkGuard::new(&pending_saves);
 
                 // キー入力イベントのバッファリング
                 if let EventType::KeyPress(key) = event.event_type {
@@ -374,6 +432,7 @@ fn main() -> Result<()> {
                     bg_sender
                         .try_send(trigger)
                         .map_err(|_| anyhow::anyhow!("【警告】保存処理が追いついていません。このクリックはスキップされました: {}", action))?;
+                    pending_guard.dismiss();
 
                     let display_action = format!("[{}] {}", window_title, action);
                     log_sender
@@ -422,6 +481,7 @@ fn main() -> Result<()> {
                 log_receiver,
                 log_sender_for_gui,
                 image_counter_for_gui,
+                pending_saves_for_gui,
                 session_sender,
             );
 
