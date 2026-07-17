@@ -18,6 +18,7 @@ pub struct RecorderApp {
     state: AppState,
     is_recording: Arc<AtomicBool>,
     log_receiver: mpsc::Receiver<String>,
+    log_sender: mpsc::Sender<String>,
     log_messages: VecDeque<String>,
     current_session_folder: Option<PathBuf>,
     review_logs: Vec<OperationLog>,
@@ -33,6 +34,7 @@ impl RecorderApp {
         cc: &eframe::CreationContext<'_>,
         is_recording: Arc<AtomicBool>,
         log_receiver: mpsc::Receiver<String>,
+        log_sender: mpsc::Sender<String>,
         image_counter: Arc<Mutex<usize>>,
         session_sender: mpsc::Sender<PathBuf>,
     ) -> Self {
@@ -89,6 +91,7 @@ impl RecorderApp {
             state: AppState::Idle,
             is_recording,
             log_receiver,
+            log_sender,
             log_messages: VecDeque::new(),
             current_session_folder: None,
             review_logs: Vec::new(),
@@ -137,56 +140,47 @@ impl RecorderApp {
         }
     }
     
-    fn delete_image(&mut self, index: usize) {
-        if index >= self.review_logs.len() {
-            return;
-        }
-        
-        // ファイルを削除
-        let log_entry = &self.review_logs[index];
+    fn get_session_size_mb(&self) -> f32 {
+        let mut total_bytes = 0u64;
         if let Some(ref folder) = self.current_session_folder {
-            let image_path = folder.join(&log_entry.image_path);
-            let _ = fs::remove_file(image_path);
-        }
-        
-        // メモリから削除
-        self.review_logs.remove(index);
-        
-        // JSONLを更新
-        if let Some(ref folder) = self.current_session_folder {
-            let log_path = folder.join("session_log.jsonl");
-            if let Ok(mut file) = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&log_path)
-            {
-                for log in &self.review_logs {
-                    if let Ok(json) = serde_json::to_string(log) {
-                        let _ = writeln!(file, "{}", json);
+            if let Ok(entries) = fs::read_dir(folder) {
+                for entry in entries.flatten() {
+                    if let Ok(metadata) = entry.metadata() {
+                        if metadata.is_file() {
+                            total_bytes += metadata.len();
+                        }
                     }
                 }
             }
         }
+        (total_bytes as f32) / (1024.0 * 1024.0)
     }
     
     fn finish_review(&mut self) {
-        // HTMLマニュアルを生成
+        // HTMLマニュアルを生成（時間のかかるBase64エンコード処理等をバックグラウンドスレッドへ非同期にオフロード）
         if let Some(ref folder) = self.current_session_folder {
-            match generator::generate_html(folder, &self.review_logs) {
-                Ok(path) => {
-                    self.log_messages.push_back(format!("✅ HTMLマニュアルを生成しました: {:?}", path));
-                    // ブラウザで自動的に開く
-                    if let Err(e) = open::that(&path) {
-                        eprintln!("ブラウザを開けませんでした: {}", e);
-                        self.log_messages.push_back(format!("⚠ ブラウザ起動エラー: {}", e));
+            let folder = folder.clone();
+            let logs = self.review_logs.clone();
+            let log_sender = self.log_sender.clone();
+            
+            self.log_messages.push_back("⏳ HTML手順書をバックグラウンドで作成中...".to_string());
+            
+            std::thread::spawn(move || {
+                match generator::generate_html(&folder, &logs) {
+                    Ok(path) => {
+                        let _ = log_sender.send(format!("✅ HTMLマニュアルを生成しました: {:?}", path));
+                        // ブラウザで自動的に開く
+                        if let Err(e) = open::that(&path) {
+                            eprintln!("ブラウザを開けませんでした: {}", e);
+                            let _ = log_sender.send(format!("⚠ ブラウザ起動エラー: {}", e));
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("HTML生成エラー: {}", e);
+                        let _ = log_sender.send(format!("❌ HTML生成エラー: {}", e));
                     }
-                },
-                Err(e) => {
-                    eprintln!("HTML生成エラー: {}", e);
-                    self.log_messages.push_back(format!("❌ HTML生成エラー: {}", e));
                 }
-            }
+            });
         }
 
         self.state = AppState::Idle;
@@ -301,138 +295,68 @@ impl RecorderApp {
     
     fn render_review(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("📸 録画内容の確認");
-            ui.add_space(10.0);
+            ui.heading(egui::RichText::new("📸 録画セッションの完了").size(24.0).strong());
+            ui.add_space(15.0);
+
+            let session_size = self.get_session_size_mb();
             
-            if let Some(ref folder) = self.current_session_folder {
-                ui.label(format!("📁 保存先: {}", folder.display()));
-            }
-            ui.label(format!("📊 記録数: {}件", self.review_logs.len()));
-            ui.add_space(10.0);
-            
+            ui.group(|ui| {
+                ui.set_width(ui.available_width());
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new("📋 セッション情報のサマリー").size(16.0).strong());
+                    ui.add_space(10.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("📊 記録ステップ数:").strong());
+                        ui.label(format!("{} 件", self.review_logs.len()));
+                    });
+                    ui.add_space(5.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("💾 記録データ容量:").strong());
+                        ui.label(format!("{:.2} MB", session_size));
+                    });
+                    ui.add_space(5.0);
+
+                    if let Some(ref folder) = self.current_session_folder {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("📁 セッション保存先:").strong());
+                            ui.label(folder.display().to_string());
+                        });
+                    }
+                });
+            });
+            ui.add_space(20.0);
+
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new("✅ 保存して終了").min_size(egui::vec2(150.0, 40.0))).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new("✅ HTML手順書を生成してブラウザで開く").size(14.0).strong())
+                    .min_size(egui::vec2(250.0, 45.0))).clicked() {
                     self.finish_review();
                 }
-                ui.add_space(20.0);
-                if ui.add(egui::Button::new(egui::RichText::new("🗑 キャンセルして破棄").color(egui::Color32::WHITE))
+                ui.add_space(15.0);
+                if ui.add(egui::Button::new(egui::RichText::new("🗑 キャンセルして破棄").color(egui::Color32::WHITE).size(14.0))
                     .fill(egui::Color32::from_rgb(200, 50, 50))
-                    .min_size(egui::vec2(150.0, 40.0)))
+                    .min_size(egui::vec2(180.0, 45.0)))
                     .clicked() {
                     self.cancel_recording();
                 }
             });
-            
-            ui.add_space(10.0);
+
+            ui.add_space(25.0);
             ui.separator();
-            ui.add_space(10.0);
-            
-            // 画像グリッド表示（仮想スクロールでメモリを節約）
-            let total_rows = self.review_logs.len();
-            let row_height = 720.0; // 画像(600) + 各種テキスト・余白の見積もり高さ
+            ui.add_space(15.0);
 
-            let mut to_delete = None;
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])  // 自動縮小を無効化
-                .show_rows(ui, row_height, total_rows, |ui, row_range| {
-                    for index in row_range {
-                        let log = &self.review_logs[index];
-                        ui.group(|ui| {
-                            ui.vertical(|ui| {
-                                // ヘッダー情報
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("#{}", index + 1)).size(16.0).strong());
-                                    ui.label(&log.action);
-                                    if let (Some(x), Some(y)) = (log.x, log.y) {
-                                        ui.label(egui::RichText::new(format!("座標: ({}, {})", x, y)).color(egui::Color32::from_rgb(100, 100, 255)));
-                                    }
-                                });
-                                
-                                ui.add_space(10.0);
-                                
-                                // 画像表示（3倍サイズ）
-                                if let Some(ref folder) = self.current_session_folder {
-                                    let image_path = folder.join(&log.image_path);
-                                    if image_path.exists() {
-                                        let uri = format!("file://{}", image_path.display());
-                                        
-                                        // 画像を大きく表示（900x600の範囲内で縦横比を保持）
-                                        let target_size = egui::vec2(900.0, 600.0);
-                                        let response = ui.add(
-                                            egui::Image::new(&uri)
-                                                .fit_to_exact_size(target_size)
-                                                .maintain_aspect_ratio(true)
-                                        );
-                                        
-                                        // クリック位置に赤い円を描画
-                                        if let (Some(x), Some(y)) = (log.x, log.y) {
-                                            let rect = response.rect;
-
-                                            // 毎フレームのimage::openを廃止:
-                                            // OperationLogに保存済みのwidth/heightを使用
-                                            if let (Some(w), Some(h)) = (log.width, log.height) {
-                                                let img_w = w as f32;
-                                                let img_h = h as f32;
-
-                                                // 実際に描画されている領域を計算（object-fit: contain相当）
-                                                let img_aspect = img_w / img_h;
-                                                let rect_aspect = rect.width() / rect.height();
-
-                                                let (display_w, display_h) = if img_aspect > rect_aspect {
-                                                    // 横長：横幅に合わせて縦に余白
-                                                    (rect.width(), rect.width() / img_aspect)
-                                                } else {
-                                                    // 縦長：縦幅に合わせて横に余白
-                                                    (rect.height() * img_aspect, rect.height())
-                                                };
-
-                                                // 画像の描画開始位置（中央寄せ）
-                                                let offset_x = rect.left() + (rect.width() - display_w) / 2.0;
-                                                let offset_y = rect.top() + (rect.height() - display_h) / 2.0;
-
-                                                // クリック位置を画面座標に変換
-                                                let scale = display_w / img_w;
-                                                let click_x = offset_x + (x as f32 * scale);
-                                                let click_y = offset_y + (y as f32 * scale);
-
-                                                let center = egui::pos2(click_x, click_y);
-
-                                                // 大きな赤い円を描画（半径30px）
-                                                ui.painter().circle_stroke(
-                                                    center,
-                                                    30.0,
-                                                    egui::Stroke::new(4.0, egui::Color32::from_rgb(255, 0, 0))
-                                                );
-
-                                                // 中心点
-                                                ui.painter().circle_filled(
-                                                    center,
-                                                    6.0,
-                                                    egui::Color32::from_rgb(255, 0, 0)
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                ui.add_space(10.0);
-                                
-                                // 削除ボタン
-                                if ui.add(egui::Button::new("🗑️ 削除").min_size(egui::vec2(100.0, 30.0))).clicked() {
-                                    to_delete = Some(index);
-                                }
-                            });
-                        });
-                        
-                        ui.add_space(15.0);
-                    }
-                });
-                
-                // 削除処理（イテレーション外で実行）
-                if let Some(index) = to_delete {
-                    self.delete_image(index);
-                }
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new("💡 各ステップの編集について").color(egui::Color32::from_rgb(120, 120, 120)).strong());
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new("・不要なステップの削除や並び替え").color(egui::Color32::from_rgb(100, 100, 100)));
+                ui.label(egui::RichText::new("・赤点マーカー（クリック座標）のON/OFF切り替え").color(egui::Color32::from_rgb(100, 100, 100)));
+                ui.label(egui::RichText::new("・個人情報などを隠す「黒塗りマスク」の追加").color(egui::Color32::from_rgb(100, 100, 100)));
+                ui.label(egui::RichText::new("・各ステップの説明文の直接入力").color(egui::Color32::from_rgb(100, 100, 100)));
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new("これらは全て、生成されたHTML上で直感的に行うことができます。").color(egui::Color32::from_rgb(100, 100, 100)).italics());
             });
+        });
     }
 }
 
