@@ -24,7 +24,10 @@ fn image_to_base64_data_uri(image_path: &str) -> String {
             format!("data:image/png;base64,{}", base64_string)
         }
         Err(e) => {
-            eprintln!("⚠️  警告: 画像ファイルの読み込みに失敗しました: {}", image_path);
+            eprintln!(
+                "⚠️  警告: 画像ファイルの読み込みに失敗しました: {}",
+                image_path
+            );
             eprintln!("   エラー: {}", e);
             format!("[Image not found: {}]", image_path)
         }
@@ -55,7 +58,11 @@ fn main() -> Result<()> {
         match serde_json::from_str::<OperationLog>(&line) {
             Ok(op) => operations.push(op),
             Err(e) => {
-                eprintln!("⚠️  警告: {}行目のパースに失敗しました: {}", line_num + 1, e);
+                eprintln!(
+                    "⚠️  警告: {}行目のパースに失敗しました: {}",
+                    line_num + 1,
+                    e
+                );
                 eprintln!("   内容: {}", line);
             }
         }
@@ -84,7 +91,10 @@ fn main() -> Result<()> {
     writeln!(html_file, "<html lang=\"ja\">")?;
     writeln!(html_file, "<head>")?;
     writeln!(html_file, "    <meta charset=\"UTF-8\">")?;
-    writeln!(html_file, "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">")?;
+    writeln!(
+        html_file,
+        "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+    )?;
     writeln!(html_file, "    <title>操作手順書</title>")?;
     writeln!(html_file, "    <style>")?;
     writeln!(html_file, "        * {{")?;
@@ -93,8 +103,14 @@ fn main() -> Result<()> {
     writeln!(html_file, "            box-sizing: border-box;")?;
     writeln!(html_file, "        }}")?;
     writeln!(html_file, "        body {{")?;
-    writeln!(html_file, "            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;")?;
-    writeln!(html_file, "            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);")?;
+    writeln!(
+        html_file,
+        "            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"
+    )?;
+    writeln!(
+        html_file,
+        "            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"
+    )?;
     writeln!(html_file, "            min-height: 100vh;")?;
     writeln!(html_file, "            padding: 40px 20px;")?;
     writeln!(html_file, "        }}")?;
@@ -103,11 +119,17 @@ fn main() -> Result<()> {
     writeln!(html_file, "            margin: 0 auto;")?;
     writeln!(html_file, "            background: white;")?;
     writeln!(html_file, "            border-radius: 20px;")?;
-    writeln!(html_file, "            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);")?;
+    writeln!(
+        html_file,
+        "            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);"
+    )?;
     writeln!(html_file, "            overflow: hidden;")?;
     writeln!(html_file, "        }}")?;
     writeln!(html_file, "        .header {{")?;
-    writeln!(html_file, "            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);")?;
+    writeln!(
+        html_file,
+        "            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"
+    )?;
     writeln!(html_file, "            color: white;")?;
     writeln!(html_file, "            padding: 40px;")?;
     writeln!(html_file, "            text-align: center;")?;
@@ -129,12 +151,21 @@ fn main() -> Result<()> {
     writeln!(html_file, "            border-radius: 15px;")?;
     writeln!(html_file, "            padding: 30px;")?;
     writeln!(html_file, "            margin-bottom: 30px;")?;
-    writeln!(html_file, "            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);")?;
-    writeln!(html_file, "            transition: transform 0.3s ease, box-shadow 0.3s ease;")?;
+    writeln!(
+        html_file,
+        "            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);"
+    )?;
+    writeln!(
+        html_file,
+        "            transition: transform 0.3s ease, box-shadow 0.3s ease;"
+    )?;
     writeln!(html_file, "        }}")?;
     writeln!(html_file, "        .step-card:hover {{")?;
     writeln!(html_file, "            transform: translateY(-5px);")?;
-    writeln!(html_file, "            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);")?;
+    writeln!(
+        html_file,
+        "            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);"
+    )?;
     writeln!(html_file, "        }}")?;
     writeln!(html_file, "        .step-header {{")?;
     writeln!(html_file, "            display: flex;")?;
@@ -142,7 +173,10 @@ fn main() -> Result<()> {
     writeln!(html_file, "            margin-bottom: 20px;")?;
     writeln!(html_file, "        }}")?;
     writeln!(html_file, "        .step-number {{")?;
-    writeln!(html_file, "            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);")?;
+    writeln!(
+        html_file,
+        "            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"
+    )?;
     writeln!(html_file, "            color: white;")?;
     writeln!(html_file, "            width: 50px;")?;
     writeln!(html_file, "            height: 50px;")?;
@@ -185,7 +219,10 @@ fn main() -> Result<()> {
     writeln!(html_file, "        .screenshot {{")?;
     writeln!(html_file, "            width: 100%;")?;
     writeln!(html_file, "            border-radius: 10px;")?;
-    writeln!(html_file, "            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);")?;
+    writeln!(
+        html_file,
+        "            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);"
+    )?;
     writeln!(html_file, "            transition: transform 0.3s ease;")?;
     writeln!(html_file, "        }}")?;
     writeln!(html_file, "        .screenshot:hover {{")?;
@@ -230,8 +267,16 @@ fn main() -> Result<()> {
 
         writeln!(html_file, "            <div class=\"step-card\">")?;
         writeln!(html_file, "                <div class=\"step-header\">")?;
-        writeln!(html_file, "                    <div class=\"step-number\">{}</div>", step_num)?;
-        writeln!(html_file, "                    <div class=\"step-title\">Step {}</div>", step_num)?;
+        writeln!(
+            html_file,
+            "                    <div class=\"step-number\">{}</div>",
+            step_num
+        )?;
+        writeln!(
+            html_file,
+            "                    <div class=\"step-title\">Step {}</div>",
+            step_num
+        )?;
         writeln!(html_file, "                </div>")?;
 
         // タイムスタンプをパースして整形
@@ -249,11 +294,21 @@ fn main() -> Result<()> {
 
         writeln!(html_file, "                <div class=\"step-info\">")?;
         writeln!(html_file, "                    <div class=\"info-row\">")?;
-        writeln!(html_file, "                        <div class=\"info-label\">📅 日時:</div>")?;
-        writeln!(html_file, "                        <div class=\"info-value\">{}</div>", timestamp_str)?;
+        writeln!(
+            html_file,
+            "                        <div class=\"info-label\">📅 日時:</div>"
+        )?;
+        writeln!(
+            html_file,
+            "                        <div class=\"info-value\">{}</div>",
+            timestamp_str
+        )?;
         writeln!(html_file, "                    </div>")?;
         writeln!(html_file, "                    <div class=\"info-row\">")?;
-        writeln!(html_file, "                        <div class=\"info-label\">🎯 アクション:</div>")?;
+        writeln!(
+            html_file,
+            "                        <div class=\"info-label\">🎯 アクション:</div>"
+        )?;
         writeln!(
             html_file,
             "                        <div class=\"info-value\">{} (Monitor: {})</div>",
@@ -264,8 +319,15 @@ fn main() -> Result<()> {
         // マウス座標（ある場合のみ）
         if let (Some(x), Some(y)) = (op.x, op.y) {
             writeln!(html_file, "                    <div class=\"info-row\">")?;
-            writeln!(html_file, "                        <div class=\"info-label\">📍 座標:</div>")?;
-            writeln!(html_file, "                        <div class=\"info-value\">({}, {})</div>", x, y)?;
+            writeln!(
+                html_file,
+                "                        <div class=\"info-label\">📍 座標:</div>"
+            )?;
+            writeln!(
+                html_file,
+                "                        <div class=\"info-value\">({}, {})</div>",
+                x, y
+            )?;
             writeln!(html_file, "                    </div>")?;
         }
 
@@ -284,7 +346,11 @@ fn main() -> Result<()> {
             )?;
         } else {
             println!("❌");
-            writeln!(html_file, "                <div class=\"error-message\">{}</div>", data_uri)?;
+            writeln!(
+                html_file,
+                "                <div class=\"error-message\">{}</div>",
+                data_uri
+            )?;
         }
 
         writeln!(html_file, "            </div>")?;

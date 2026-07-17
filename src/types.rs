@@ -7,8 +7,8 @@ use std::path::PathBuf;
 pub struct DisplayInfo {
     pub x: i32,
     pub y: i32,
-    pub width: u32,      // 物理ピクセル（実際の画像の幅）
-    pub height: u32,     // 物理ピクセル（実際の画像の高さ）
+    pub width: u32,        // 物理ピクセル（実際の画像の幅）
+    pub height: u32,       // 物理ピクセル（実際の画像の高さ）
     pub scale_factor: f32, // DPIスケール（例: 125% → 1.25）
     pub id: u32,
 }
@@ -22,10 +22,7 @@ impl DisplayInfo {
         let y = y as i32;
         let physical_w = (self.width as f32 * self.scale_factor) as i32;
         let physical_h = (self.height as f32 * self.scale_factor) as i32;
-        x >= self.x
-            && x < self.x + physical_w
-            && y >= self.y
-            && y < self.y + physical_h
+        x >= self.x && x < self.x + physical_w && y >= self.y && y < self.y + physical_h
     }
 
     // 点からディスプレイ物理矩形までの距離（の2乗）を計算
@@ -87,7 +84,7 @@ pub struct OperationLog {
 pub struct CaptureMessage {
     pub capture: CaptureData,
     pub mouse_pos: (f64, f64),
-    pub has_mouse_pos: bool,   // 座標の有無を明示（ゼロ値との区別のため）
+    pub has_mouse_pos: bool, // 座標の有無を明示（ゼロ値との区別のため）
     pub timestamp: String,
     pub action: String,
     pub session_folder: PathBuf,

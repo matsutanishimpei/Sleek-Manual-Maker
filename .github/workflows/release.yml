@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v2.0.1"
+        required: true
+        type: string
+      draft:
+        description: "Create or update as draft"
+        required: true
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark as prerelease"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Resolve release settings
+        id: release
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ inputs.tag }}"
+            $draft = "${{ inputs.draft }}"
+            $prerelease = "${{ inputs.prerelease }}"
+          } else {
+            $tag = "${{ github.ref_name }}"
+            $draft = "false"
+            $prerelease = "false"
+          }
+
+          if ($tag -notmatch '^v\d+\.\d+\.\d+.*$') {
+            throw "Release tag must look like v2.0.1. Got: $tag"
+          }
+
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "draft=$draft" >> $env:GITHUB_OUTPUT
+          "prerelease=$prerelease" >> $env:GITHUB_OUTPUT
+
+      - name: Validate tag exists
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.release.outputs.tag }}"
+          git rev-parse "refs/tags/$tag" | Out-Null
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check
+        run: cargo check --all-targets
+
+      - name: Test
+        run: cargo test --all-targets
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build release zip
+        shell: pwsh
+        run: |
+          .\scripts\build_release_zip.ps1 `
+            -OutputPath "dist\SleekManualMaker.zip" `
+            -HashOutputPath "dist\SleekManualMaker.zip.sha256"
+
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $hash = (Get-Content -LiteralPath "dist\SleekManualMaker.zip.sha256").Split(" ")[0]
+          $tag = "${{ steps.release.outputs.tag }}"
+          $notes = @(
+            "# SleekManualMaker $tag",
+            "",
+            "## Assets",
+            "",
+            "- ``SleekManualMaker.zip``",
+            "- SHA-256: ``$hash``",
+            "",
+            "## Install",
+            "",
+            "Download ``SleekManualMaker.zip``, extract it, and run ``SleekManualMaker.exe``.",
+            "",
+            "## Data Location",
+            "",
+            "Runtime logs and recording data are stored under ``%APPDATA%\SleekManualMaker\`` on Windows."
+          )
+          Set-Content -LiteralPath "dist\release-notes.md" -Value $notes -Encoding UTF8
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: SleekManualMaker ${{ steps.release.outputs.tag }}
+          body_path: dist/release-notes.md
+          draft: ${{ steps.release.outputs.draft }}
+          prerelease: ${{ steps.release.outputs.prerelease }}
+          make_latest: true
+          overwrite_files: true
+          files: |
+            dist/SleekManualMaker.zip
+            dist/SleekManualMaker.zip.sha256

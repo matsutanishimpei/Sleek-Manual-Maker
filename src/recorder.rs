@@ -29,7 +29,7 @@ pub fn save_capture_and_log(msg: CaptureMessage) -> Result<()> {
             capture.image_buffer.as_raw(),
             capture.image_buffer.width(),
             capture.image_buffer.height(),
-            image::ColorType::Rgba8.into(),
+            image::ColorType::Rgba8,
         )?;
     }
 

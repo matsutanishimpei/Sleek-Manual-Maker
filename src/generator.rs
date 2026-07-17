@@ -3,7 +3,7 @@ use base64::{engine::general_purpose, Engine as _};
 use chrono::Local;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::types::OperationLog;
 
@@ -342,10 +342,16 @@ const HTML_JS: &str = r##"
 fn image_to_base64_data_uri(image_path: &PathBuf) -> String {
     match std::fs::read(image_path) {
         Ok(image_data) => {
-            format!("data:image/jpeg;base64,{}", general_purpose::STANDARD.encode(&image_data))
+            format!(
+                "data:image/jpeg;base64,{}",
+                general_purpose::STANDARD.encode(&image_data)
+            )
         }
         Err(e) => {
-            eprintln!("警告: 画像ファイルの読み込みに失敗しました: {:?}", image_path);
+            eprintln!(
+                "警告: 画像ファイルの読み込みに失敗しました: {:?}",
+                image_path
+            );
             format!("[Image error: {}]", e)
         }
     }
@@ -366,13 +372,26 @@ fn escape_html(text: &str) -> String {
     escaped
 }
 
-fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &OperationLog, step_num: usize) -> Result<()> {
+fn write_step_card(
+    f: &mut impl Write,
+    session_folder: &Path,
+    log: &OperationLog,
+    step_num: usize,
+) -> Result<()> {
     let step_id = format!("step-{}", step_num);
     let escaped_image_path = escape_html(&log.image_path);
 
-    writeln!(f, "        <div class=\"step-card\" id=\"{}\" data-image-path=\"{}\">", step_id, escaped_image_path)?;
+    writeln!(
+        f,
+        "        <div class=\"step-card\" id=\"{}\" data-image-path=\"{}\">",
+        step_id, escaped_image_path
+    )?;
     writeln!(f, "            <div class=\"card-header\">")?;
-    writeln!(f, "                <div class=\"step-badge\">STEP {}</div>", step_num)?;
+    writeln!(
+        f,
+        "                <div class=\"step-badge\">STEP {}</div>",
+        step_num
+    )?;
     writeln!(f, "                <div class=\"controls\">")?;
     writeln!(f, "                    <button class=\"btn btn-toggle active\" onclick=\"toggleDot('{}', this)\">🔴 赤点</button>", step_id)?;
     writeln!(f, "                    <button class=\"btn btn-delete\" onclick=\"deleteStep('{}')\">🗑️ 削除</button>", step_id)?;
@@ -391,7 +410,11 @@ fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &Operation
 
     if let Some(ref uri) = data_uri {
         writeln!(f, "                    <div class=\"image-container\">")?;
-        writeln!(f, "                        <img src=\"{}\" class=\"screenshot\">", uri)?;
+        writeln!(
+            f,
+            "                        <img src=\"{}\" class=\"screenshot\">",
+            uri
+        )?;
 
         if let (Some(x), Some(y)) = (log.x, log.y) {
             let (dim_w, dim_h) = match (log.width, log.height) {
@@ -403,7 +426,7 @@ fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &Operation
             };
             if dim_w > 0.0 {
                 let left = ((x as f64 / dim_w) * 100.0).clamp(0.0, 100.0);
-                let top  = ((y as f64 / dim_h) * 100.0).clamp(0.0, 100.0);
+                let top = ((y as f64 / dim_h) * 100.0).clamp(0.0, 100.0);
                 writeln!(f, "                        <div class=\"marker\" style=\"left: {:.2}%; top: {:.2}%;\"></div>", left, top)?;
             }
         }
@@ -462,7 +485,11 @@ fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &Operation
         escape_html(&friendly_action)
     };
 
-    writeln!(f, "                    <div class=\"action-title\">{}</div>", title_html)?;
+    writeln!(
+        f,
+        "                    <div class=\"action-title\">{}</div>",
+        title_html
+    )?;
 
     // クリック位置のズーム表示（画像が存在し、座標情報がある場合のみ）
     if let (Some(ref uri), Some(x), Some(y)) = (&data_uri, log.x, log.y) {
@@ -487,15 +514,24 @@ fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &Operation
             writeln!(f, "                            <img src=\"{}\" style=\"position: absolute; max-width: none; width: {:.1}px; height: auto; left: {:.1}px; top: {:.1}px; pointer-events: none;\">", uri, zoom_w, left_offset, top_offset)?;
             writeln!(f, "                            <div style=\"position: absolute; left: 57px; top: 57px; width: 6px; height: 6px; background: red; border-radius: 50%; box-shadow: 0 0 4px rgba(255,0,0,0.8);\"></div>")?;
             writeln!(f, "                        </div>")?;
-            writeln!(f, "                        <div style=\"font-size: 0.85rem; color: #718096;\">")?;
-            writeln!(f, "                            <strong>クリック箇所の拡大</strong><br>")?;
+            writeln!(
+                f,
+                "                        <div style=\"font-size: 0.85rem; color: #718096;\">"
+            )?;
+            writeln!(
+                f,
+                "                            <strong>クリック箇所の拡大</strong><br>"
+            )?;
             writeln!(f, "                            座標: ({}, {})", x, y)?;
             writeln!(f, "                        </div>")?;
             writeln!(f, "                    </div>")?;
         }
     }
 
-    writeln!(f, "                    <div class=\"description-box\" contenteditable=\"true\"></div>")?;
+    writeln!(
+        f,
+        "                    <div class=\"description-box\" contenteditable=\"true\"></div>"
+    )?;
     writeln!(f, "                </div>")?;
 
     writeln!(f, "            </div>")?;
@@ -503,10 +539,12 @@ fn write_step_card(f: &mut impl Write, session_folder: &PathBuf, log: &Operation
     Ok(())
 }
 
-pub fn generate_html(session_folder: &PathBuf, logs: &[OperationLog]) -> Result<PathBuf> {
+pub fn generate_html(session_folder: &Path, logs: &[OperationLog]) -> Result<PathBuf> {
     let output_file = session_folder.join("manual.html");
     let mut f = OpenOptions::new()
-        .create(true).write(true).truncate(true)
+        .create(true)
+        .write(true)
+        .truncate(true)
         .open(&output_file)?;
 
     let now = Local::now();
@@ -515,7 +553,10 @@ pub fn generate_html(session_folder: &PathBuf, logs: &[OperationLog]) -> Result<
     writeln!(f, "<html lang=\"ja\">")?;
     writeln!(f, "<head>")?;
     writeln!(f, "    <meta charset=\"UTF-8\">")?;
-    writeln!(f, "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">")?;
+    writeln!(
+        f,
+        "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+    )?;
     writeln!(f, "    <title>操作手順書</title>")?;
     writeln!(f, "    <style>{}</style>", HTML_CSS)?;
     writeln!(f, "</head>")?;
@@ -524,8 +565,12 @@ pub fn generate_html(session_folder: &PathBuf, logs: &[OperationLog]) -> Result<
     writeln!(f, "    <div class=\"container\">")?;
     writeln!(f, "        <div class=\"header\">")?;
     writeln!(f, "            <h1>操作手順書</h1>")?;
-    writeln!(f, "            <p class=\"meta-info\">生成日時: {} | ステップ数: {}</p>",
-        now.format("%Y/%m/%d %H:%M"), logs.len())?;
+    writeln!(
+        f,
+        "            <p class=\"meta-info\">生成日時: {} | ステップ数: {}</p>",
+        now.format("%Y/%m/%d %H:%M"),
+        logs.len()
+    )?;
     writeln!(f, "        </div>")?;
 
     for (i, log) in logs.iter().enumerate() {
@@ -534,7 +579,10 @@ pub fn generate_html(session_folder: &PathBuf, logs: &[OperationLog]) -> Result<
 
     writeln!(f, "    </div>")?;
 
-    writeln!(f, "    <div class=\"save-bar\" style=\"display: flex; gap: 10px;\">")?;
+    writeln!(
+        f,
+        "    <div class=\"save-bar\" style=\"display: flex; gap: 10px;\">"
+    )?;
     writeln!(f, "        <button class=\"btn-save\" style=\"background: #e2e8f0; color: #4a5568; box-shadow: none;\" onclick=\"toggleMaskMode(this)\">🔒 マスクモード: OFF</button>")?;
     writeln!(f, "        <button class=\"btn-save\" style=\"background: #718096; box-shadow: none;\" onclick=\"saveHtml()\">💾 編集用HTMLを保存 (一時保存)</button>")?;
     writeln!(f, "        <button class=\"btn-save\" style=\"background: #319795; box-shadow: none;\" onclick=\"exportMarkdown()\">📤 Markdown出力</button>")?;
@@ -547,4 +595,25 @@ pub fn generate_html(session_folder: &PathBuf, logs: &[OperationLog]) -> Result<
     writeln!(f, "</html>")?;
 
     Ok(output_file)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_html_escapes_markup_and_quotes() {
+        assert_eq!(
+            escape_html("<script>alert('x') & \"y\"</script>"),
+            "&lt;script&gt;alert(&#39;x&#39;) &amp; &quot;y&quot;&lt;/script&gt;"
+        );
+    }
+
+    #[test]
+    fn escape_html_leaves_normal_japanese_text_intact() {
+        assert_eq!(
+            escape_html("左クリック 入力テキスト"),
+            "左クリック 入力テキスト"
+        );
+    }
 }

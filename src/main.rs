@@ -2,6 +2,7 @@
 
 mod app;
 mod generator;
+mod paths;
 mod recorder;
 mod types;
 
@@ -44,11 +45,11 @@ fn decrement_pending_saves(pending_saves: &AtomicUsize) {
 }
 
 fn write_startup_error(message: &str) {
-    let _ = fs::create_dir_all("log");
+    let _ = fs::create_dir_all(paths::log_dir());
     if let Ok(mut file) = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("log/application.log")
+        .open(paths::application_log_path())
     {
         let _ = writeln!(file, "{}", message);
     }
@@ -125,18 +126,19 @@ fn get_current_mouse_pos() -> (f64, f64) {
 
 fn main() -> Result<()> {
     // recordsディレクトリの作成
-    fs::create_dir_all("records")?;
+    fs::create_dir_all(paths::records_dir())?;
+    fs::create_dir_all(paths::log_dir())?;
 
     let is_recording = Arc::new(AtomicBool::new(false));
     let is_recording_for_event = Arc::clone(&is_recording);
-    let is_recording_for_gui   = Arc::clone(&is_recording);
+    let is_recording_for_gui = Arc::clone(&is_recording);
 
     let (log_sender, log_receiver) = mpsc::channel();
     let log_sender_for_event = log_sender.clone();
 
     let image_counter = Arc::new(Mutex::new(0usize));
     let image_counter_for_event = Arc::clone(&image_counter);
-    let image_counter_for_gui   = Arc::clone(&image_counter);
+    let image_counter_for_gui = Arc::clone(&image_counter);
 
     let pending_saves = Arc::new(AtomicUsize::new(0));
     let pending_saves_for_event = Arc::clone(&pending_saves);
@@ -167,8 +169,12 @@ fn main() -> Result<()> {
     );
 
     // 起動ログ・モニター情報出力
-    log_sender.send("[INFO] Application started.".to_string()).ok();
-    log_sender.send(format!("[INFO] Detected {} monitors:", screens.len())).ok();
+    log_sender
+        .send("[INFO] Application started.".to_string())
+        .ok();
+    log_sender
+        .send(format!("[INFO] Detected {} monitors:", screens.len()))
+        .ok();
 
     for (i, screen) in screens.iter().enumerate() {
         let info = &screen.display_info;
@@ -189,14 +195,14 @@ fn main() -> Result<()> {
     // セッションフォルダパスの共有
     let current_session_folder = Arc::new(Mutex::new(None::<PathBuf>));
     let current_session_folder_for_event = Arc::clone(&current_session_folder);
-    let current_session_folder_for_gui   = Arc::clone(&current_session_folder);
+    let current_session_folder_for_gui = Arc::clone(&current_session_folder);
 
     // バックグラウンドキャプチャ＆保存スレッド
     // 異常時にメモリが無尽蔵に増えるのを防ぐため、最大10フレームまでキューイングする sync_channel を使用
     let (bg_sender, bg_receiver) = mpsc::sync_channel::<RecordTrigger>(10);
     let log_sender_for_bg = log_sender.clone();
     let cached_screens_for_bg = Arc::clone(&cached_screens);
-    
+
     thread::spawn(move || {
         while let Ok(trigger) = bg_receiver.recv() {
             let result: Result<()> = (|| {
@@ -332,7 +338,10 @@ fn main() -> Result<()> {
                         if buffered_text.is_empty() {
                             ("KeyPress_Enter".to_string(), true)
                         } else {
-                            (format!("KeyPress_Enter (入力: 「{}」)", buffered_text), true)
+                            (
+                                format!("KeyPress_Enter (入力: 「{}」)", buffered_text),
+                                true,
+                            )
                         }
                     }
                     EventType::KeyPress(Key::Tab) => {
@@ -362,17 +371,22 @@ fn main() -> Result<()> {
 
                     #[cfg(debug_assertions)]
                     if let Some(ref d) = found {
-                        log_sender.send(format!(
-                            "[DBG検出] rdev({:.0},{:.0}) → Monitor ID:{} x:{} y:{} scale:{:.2}",
-                            x, y, d.id, d.x, d.y, d.scale_factor
-                        )).ok();
+                        log_sender
+                            .send(format!(
+                                "[DBG検出] rdev({:.0},{:.0}) → Monitor ID:{} x:{} y:{} scale:{:.2}",
+                                x, y, d.id, d.x, d.y, d.scale_factor
+                            ))
+                            .ok();
                     }
 
                     if found.is_none() {
                         #[cfg(debug_assertions)]
-                        log_sender.send(format!(
-                            "[DBG警告] rdev({:.0},{:.0}) が範囲外 → 最近働フォールバック", x, y
-                        )).ok();
+                        log_sender
+                            .send(format!(
+                                "[DBG警告] rdev({:.0},{:.0}) が範囲外 → 最近働フォールバック",
+                                x, y
+                            ))
+                            .ok();
 
                         found = display_infos
                             .iter()
@@ -385,16 +399,21 @@ fn main() -> Result<()> {
 
                         #[cfg(debug_assertions)]
                         if let Some(ref d) = found {
-                            log_sender.send(format!(
-                                "[DBGフォールバック] → Monitor ID:{} x:{} scale:{:.2}",
-                                d.id, d.x, d.scale_factor
-                            )).ok();
+                            log_sender
+                                .send(format!(
+                                    "[DBGフォールバック] → Monitor ID:{} x:{} scale:{:.2}",
+                                    d.id, d.x, d.scale_factor
+                                ))
+                                .ok();
                         }
                     }
                     found
                 } else {
                     log_sender
-                        .send("[情報] マウス座標不明のため、メインディスプレイを使用します".to_string())
+                        .send(
+                            "[情報] マウス座標不明のため、メインディスプレイを使用します"
+                                .to_string(),
+                        )
                         .ok();
                     display_infos.first().cloned()
                 };
@@ -491,4 +510,39 @@ fn main() -> Result<()> {
     .map_err(|e| anyhow::anyhow!("GUI起動エラー: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_guard_decrements_when_dropped() {
+        let pending = AtomicUsize::new(0);
+        {
+            let _guard = PendingWorkGuard::new(&pending);
+            assert_eq!(pending.load(Ordering::Acquire), 1);
+        }
+        assert_eq!(pending.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn pending_guard_dismiss_transfers_decrement_to_background_worker() {
+        let pending = AtomicUsize::new(0);
+        {
+            let mut guard = PendingWorkGuard::new(&pending);
+            guard.dismiss();
+        }
+        assert_eq!(pending.load(Ordering::Acquire), 1);
+
+        decrement_pending_saves(&pending);
+        assert_eq!(pending.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn decrement_pending_saves_does_not_underflow() {
+        let pending = AtomicUsize::new(0);
+        decrement_pending_saves(&pending);
+        assert_eq!(pending.load(Ordering::Acquire), 0);
+    }
 }

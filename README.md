@@ -20,7 +20,7 @@ PC操作を自動的に監視し、特定のアクション（マウスクリッ
 録画停止後、保存中のスクリーンショットとログをすべて待ってからサマリー確認画面に遷移します。
 - **軽量サマリー確認:**
   - アプリ内では画像のデコード・描画を行わず、記録件数や合計ファイルサイズ（MB）のみを軽量に表示します。
-  - ワンクリックでHTML手順書を非同期に生成し、ブラウザで自動起動します。不要な場合はセッションデータを即座に破棄できます。
+  - ワンクリックでHTML手順書を非同期に生成し、ブラウザで自動起動します。不要な場合は、保存処理の完了を待ってからセッションデータを安全に破棄できます。
 
 ### 3. マニュアル自動生成・インタラクティブ編集 (HTML Generator & Editor)
 生成されたHTMLファイル自体が、高度な手順書エディタ（編集ツール）として動作します。
@@ -35,26 +35,50 @@ PC操作を自動的に監視し、特定のアクション（マウスクリッ
 ## ビルドと配布
 
 ### 配布用パッケージの作成
-以下のバッチファイルを実行すると、`release_package` フォルダに必要なファイル一式が生成されます。
+以下のPowerShellスクリプトを実行すると、`dist/` 配下に配布用zipとSHA-256ハッシュを生成します。
 
-```bash
-.\create_release_package.bat
+```powershell
+.\scripts\build_release_zip.ps1
 ```
 
 生成されるもの:
-- `SleekManualMaker.exe`: 実行ファイル（コンソールウィンドウなし）
-- `assets/`: 必要なリソース（フォントなど）
+- `dist/SleekManualMaker.zip`: 配布用zip
+- `dist/SleekManualMaker.zip.sha256`: SHA-256ハッシュ
+
+### GitHub Releaseの自動更新
+
+`v*` 形式のタグをpushすると、GitHub ActionsがWindows上で検査・ビルド・zip作成を行い、GitHub Releaseへ `SleekManualMaker.zip` とSHA-256ファイルをアップロードします。
+
+```bash
+git tag v2.0.1
+git push origin v2.0.1
+```
+
+GitHub Actionsの `Release` workflowは手動実行にも対応しており、既存タグのリリース資産を再作成・更新できます。
 
 ### デバッグ用パッケージの作成
 開発やトラブルシューティング時には、デバッグログを確認できる版を作成できます。
 
 ```bash
-.\create_debug_package.bat
+.\scripts\build_debug_package.ps1
 ```
 
 ## 実行方法
 
-生成された `release_package` フォルダごと配布し、中の `SleekManualMaker.exe` を実行してください。
+生成された `SleekManualMaker.zip` を展開し、中の `SleekManualMaker.exe` を実行してください。
+
+録画データとログは、Windowsでは `%APPDATA%\SleekManualMaker\` 配下に保存されます。
+
+## 開発時の品質チェック
+
+```bash
+cargo fmt --all -- --check
+cargo check --all-targets
+cargo test --all-targets
+cargo clippy --all-targets -- -D warnings
+```
+
+GitHub Actionsでも同じ検査を実行します。
 
 ## 技術仕様
 
@@ -65,8 +89,8 @@ PC操作を自動的に監視し、特定のアクション（マウスクリッ
 - **egui / eframe**: 高速で軽量なGUIフレームワーク
 
 ### ファイル構成
-- `records/`: 録画セッションごとのデータ（画像・ログ）が保存されます。
-- `log/application.log`: アプリケーションの動作ログ。
+- `%APPDATA%\SleekManualMaker\records\`: 録画セッションごとのデータ（画像・ログ）が保存されます。
+- `%APPDATA%\SleekManualMaker\log\application.log`: アプリケーションの動作ログ。
 - `docs/`: 設計メモ、状態遷移図、ログ仕様などの詳細ドキュメント。
 
 ## ドキュメント

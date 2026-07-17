@@ -2,8 +2,8 @@
 /target/
 
 # Generated packages
-/debug_package/
-/release_package/
+/dist/
+/SleekManualMaker.zip
 
 # Logs and Recordings
 /log/
