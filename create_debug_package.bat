@@ -5,13 +5,20 @@ setlocal
 echo [BUILD] デバッグパッケージを作成しています...
 echo.
 
+:: cargo の正確なパスを判定
+set CARGO_PATH=cargo
+if exist "%USERPROFILE%\.cargo\bin\cargo.exe" (
+    set CARGO_PATH="%USERPROFILE%\.cargo\bin\cargo.exe"
+)
+
 :: Debugビルドを実行
-cargo build --bin SleekManualMaker
+%CARGO_PATH% build --bin SleekManualMaker
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] ビルドに失敗しました。
     pause
     exit /b 1
 )
+
 
 :: パッケージディレクトリの準備
 if not exist "debug_package" mkdir "debug_package"

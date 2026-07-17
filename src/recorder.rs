@@ -1,6 +1,6 @@
 use crate::types::{CaptureMessage, OperationLog};
 use anyhow::Result;
-use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::codecs::jpeg::JpegEncoder;
 use image::ImageEncoder;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -14,16 +14,17 @@ pub fn save_capture_and_log(msg: CaptureMessage) -> Result<()> {
         action,
         session_folder,
         image_index,
+        window_title,
     } = msg;
 
     // 画像ファイル名
-    let filename = format!("image_{:03}.png", image_index);
+    let filename = format!("image_{:03}.jpg", image_index);
     let image_path = session_folder.join(&filename);
 
-    // 画像保存（CompressionType::Fast でエンコード速度優先）
+    // 画像保存（JpegEncoder を使い画質80%で圧縮保存）
     {
         let file = std::fs::File::create(&image_path)?;
-        let encoder = PngEncoder::new_with_quality(file, CompressionType::Fast, FilterType::Sub);
+        let encoder = JpegEncoder::new_with_quality(file, 80);
         encoder.write_image(
             capture.image_buffer.as_raw(),
             capture.image_buffer.width(),
@@ -63,6 +64,7 @@ pub fn save_capture_and_log(msg: CaptureMessage) -> Result<()> {
         image_path: filename,
         width: Some(img_physical_w),
         height: Some(img_physical_h),
+        window_title,
     };
 
     let log_path = session_folder.join("session_log.jsonl");

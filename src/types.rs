@@ -78,6 +78,9 @@ pub struct OperationLog {
     pub width: Option<u32>,
     #[serde(default)]
     pub height: Option<u32>,
+    // アクティブウィンドウタイトル（古いログとの互換性のためにOptionかつdefault）
+    #[serde(default)]
+    pub window_title: Option<String>,
 }
 
 // バックグラウンド処理へ送るメッセージ
@@ -89,6 +92,19 @@ pub struct CaptureMessage {
     pub action: String,
     pub session_folder: PathBuf,
     pub image_index: usize,
+    pub window_title: Option<String>,
+}
+
+// 録画フックからバックグラウンドキャプチャスレッドへ送るメッセージ
+pub struct RecordTrigger {
+    pub target_display: DisplayInfo,
+    pub mouse_pos: (f64, f64),
+    pub has_mouse_pos: bool,
+    pub timestamp: String,
+    pub action: String,
+    pub session_folder: PathBuf,
+    pub image_index: usize,
+    pub window_title: Option<String>,
 }
 
 // アプリケーション状態

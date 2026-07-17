@@ -18,7 +18,7 @@ use std::thread;
 
 use app::RecorderApp;
 use recorder::save_capture_and_log;
-use types::{CaptureData, CaptureMessage, DisplayInfo};
+use types::{CaptureData, CaptureMessage, DisplayInfo, RecordTrigger};
 
 /// マウス座標(f64, f64) を AtomicU64 に pack（x/y を i32 に丸めて上位/下位 32bit に格納）
 #[inline]
@@ -34,6 +34,48 @@ fn unpack_mouse(v: u64) -> (f64, f64) {
     let x = (v >> 32) as u32 as i32 as f64;
     let y = (v as u32) as i32 as f64;
     (x, y)
+}
+
+#[cfg(target_os = "windows")]
+fn get_active_window_title() -> String {
+    use winapi::um::winuser::{GetForegroundWindow, GetWindowTextW};
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return "不明なウィンドウ".to_string();
+        }
+        let mut buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        if len > 0 {
+            String::from_utf16_lossy(&buf[..len as usize])
+        } else {
+            "デスクトップ".to_string()
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_active_window_title() -> String {
+    "不明なウィンドウ".to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn get_current_mouse_pos() -> (f64, f64) {
+    use winapi::shared::windef::POINT;
+    use winapi::um::winuser::GetCursorPos;
+    unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut pt) != 0 {
+            (pt.x as f64, pt.y as f64)
+        } else {
+            (0.0, 0.0)
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_current_mouse_pos() -> (f64, f64) {
+    (0.0, 0.0)
 }
 
 fn main() -> Result<()> {
@@ -95,33 +137,66 @@ fn main() -> Result<()> {
     let current_session_folder_for_event = Arc::clone(&current_session_folder);
     let current_session_folder_for_gui   = Arc::clone(&current_session_folder);
 
-    // バックグラウンド保存スレッド（Arc<Mutex>不要：スレッドが1つだけなのでmoveで直接渡せる）
+    // バックグラウンドキャプチャ＆保存スレッド
     // 異常時にメモリが無尽蔵に増えるのを防ぐため、最大10フレームまでキューイングする sync_channel を使用
-    let (bg_sender, bg_receiver) = mpsc::sync_channel::<CaptureMessage>(10);
+    let (bg_sender, bg_receiver) = mpsc::sync_channel::<RecordTrigger>(10);
     let log_sender_for_bg = log_sender.clone();
+    let cached_screens_for_bg = Arc::clone(&cached_screens);
     
     thread::spawn(move || {
-        while let Ok(msg) = bg_receiver.recv() {
-            if let Err(e) = save_capture_and_log(msg) {
-                let err_msg = format!("❌ 画像の保存に失敗しました（容量不足など）: {}", e);
+        while let Ok(trigger) = bg_receiver.recv() {
+            let result: Result<()> = (|| {
+                let screen = cached_screens_for_bg
+                    .iter()
+                    .find(|s| s.display_info.id == trigger.target_display.id)
+                    .ok_or_else(|| anyhow::anyhow!("対象ディスプレイが見つかりません"))?;
+
+                let screenshot = screen
+                    .capture()
+                    .map_err(|_| anyhow::anyhow!("スクリーンショットのキャプチャに失敗"))?;
+
+                let msg = CaptureMessage {
+                    capture: CaptureData {
+                        display_info: trigger.target_display,
+                        image_buffer: screenshot,
+                    },
+                    mouse_pos: trigger.mouse_pos,
+                    has_mouse_pos: trigger.has_mouse_pos,
+                    timestamp: trigger.timestamp,
+                    action: trigger.action,
+                    session_folder: trigger.session_folder,
+                    image_index: trigger.image_index,
+                    window_title: trigger.window_title,
+                };
+
+                save_capture_and_log(msg)?;
+                Ok(())
+            })();
+
+            if let Err(e) = result {
+                let err_msg = format!("❌ 録画データの保存に失敗しました: {}", e);
                 eprintln!("{}", err_msg);
                 let _ = log_sender_for_bg.send(err_msg);
             }
         }
     });
 
+    // キーボード入力バッファ用の変数
+    let kb_buffer = Arc::new(Mutex::new(String::new()));
+
     // イベント監視スレッド
     {
         let display_infos = Arc::clone(&display_infos);
-        let cached_screens = Arc::clone(&cached_screens);
         let is_recording = Arc::clone(&is_recording_for_event);
         let log_sender = log_sender_for_event;
         let image_counter = Arc::clone(&image_counter_for_event);
         let current_session_folder = Arc::clone(&current_session_folder_for_event);
+        let kb_buffer_clone = Arc::clone(&kb_buffer);
 
         thread::spawn(move || {
-            // Mutex ではなく AtomicU64 で lock-free にマウス座標を共有
-            let last_mouse_pos = Arc::new(AtomicU64::new(0));
+            // 現在のマウス位置で初期化
+            let initial_pos = get_current_mouse_pos();
+            let last_mouse_pos = Arc::new(AtomicU64::new(pack_mouse(initial_pos.0, initial_pos.1)));
             let last_mouse_pos_clone = Arc::clone(&last_mouse_pos);
 
             if let Err(e) = listen(move |event| {
@@ -133,10 +208,82 @@ fn main() -> Result<()> {
                     return;
                 }
 
+                // キー入力イベントのバッファリング
+                if let EventType::KeyPress(key) = event.event_type {
+                    let is_modifier = matches!(
+                        key,
+                        Key::ControlLeft
+                            | Key::ControlRight
+                            | Key::ShiftLeft
+                            | Key::ShiftRight
+                            | Key::Alt
+                            | Key::AltGr
+                            | Key::MetaLeft
+                            | Key::MetaRight
+                    );
+
+                    if !is_modifier {
+                        if key == Key::Backspace {
+                            let mut buf = kb_buffer_clone.lock().unwrap();
+                            buf.pop();
+                        } else if key != Key::Return && key != Key::Tab {
+                            if let Some(ref name) = event.name {
+                                if name.chars().all(|c| !c.is_control()) {
+                                    let mut buf = kb_buffer_clone.lock().unwrap();
+                                    buf.push_str(name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let mut buffered_text = String::new();
+                let should_flush = matches!(
+                    event.event_type,
+                    EventType::ButtonPress(Button::Left)
+                        | EventType::ButtonPress(Button::Right)
+                        | EventType::KeyPress(Key::Return)
+                        | EventType::KeyPress(Key::Tab)
+                );
+
+                if should_flush {
+                    let mut buf = kb_buffer_clone.lock().unwrap();
+                    if !buf.is_empty() {
+                        buffered_text = std::mem::take(&mut *buf);
+                    }
+                }
+
                 let (action, needs_mouse_pos) = match event.event_type {
-                    EventType::ButtonPress(Button::Left) => ("MouseClick".to_string(), true),
-                    EventType::ButtonPress(Button::Right) => ("RightClick".to_string(), true),
-                    EventType::KeyPress(Key::Tab) => ("KeyPress_Tab".to_string(), false),
+                    EventType::ButtonPress(Button::Left) => {
+                        let act = if buffered_text.is_empty() {
+                            "MouseClick".to_string()
+                        } else {
+                            format!("MouseClick (入力: 「{}」)", buffered_text)
+                        };
+                        (act, true)
+                    }
+                    EventType::ButtonPress(Button::Right) => {
+                        let act = if buffered_text.is_empty() {
+                            "RightClick".to_string()
+                        } else {
+                            format!("RightClick (入力: 「{}」)", buffered_text)
+                        };
+                        (act, true)
+                    }
+                    EventType::KeyPress(Key::Return) => {
+                        if buffered_text.is_empty() {
+                            ("KeyPress_Enter".to_string(), true)
+                        } else {
+                            (format!("KeyPress_Enter (入力: 「{}」)", buffered_text), true)
+                        }
+                    }
+                    EventType::KeyPress(Key::Tab) => {
+                        if buffered_text.is_empty() {
+                            ("KeyPress_Tab".to_string(), true)
+                        } else {
+                            (format!("KeyPress_Tab (入力: 「{}」)", buffered_text), true)
+                        }
+                    }
                     _ => return,
                 };
 
@@ -199,18 +346,6 @@ fn main() -> Result<()> {
                     let target_display = target_display
                         .ok_or_else(|| anyhow::anyhow!("ディスプレイの特定に失敗: {}", action))?;
 
-                    let screen = cached_screens
-                        .iter()
-                        .find(|s| s.display_info.id == target_display.id)
-                        .ok_or_else(|| anyhow::anyhow!("対象ディスプレイが見つかりません: {}", action))?;
-
-                    let screenshot = screen
-                        .capture()
-                        .map_err(|_| anyhow::anyhow!("スクリーンショットのキャプチャに失敗: {}", action))?;
-
-                    // screenshots::Screen::capture() は RgbaImage を直接返す
-                    let image_buffer = screenshot;
-
                     let session_folder = current_session_folder
                         .lock()
                         .unwrap()
@@ -222,26 +357,27 @@ fn main() -> Result<()> {
                     let image_index = *counter;
                     drop(counter);
 
-                    let msg = CaptureMessage {
-                        capture: CaptureData {
-                            display_info: target_display,
-                            image_buffer,
-                        },
+                    let window_title = get_active_window_title();
+
+                    let trigger = RecordTrigger {
+                        target_display,
                         mouse_pos: mouse_pos.unwrap_or((0.0, 0.0)),
                         has_mouse_pos: mouse_pos.is_some(),
                         timestamp: timestamp.clone(),
                         action: action.clone(),
                         session_folder,
                         image_index,
+                        window_title: Some(window_title.clone()),
                     };
 
                     // キューが一杯ならスキップ（OSのフックやメモリをフリーズさせないため）
                     bg_sender
-                        .try_send(msg)
+                        .try_send(trigger)
                         .map_err(|_| anyhow::anyhow!("【警告】保存処理が追いついていません。このクリックはスキップされました: {}", action))?;
 
+                    let display_action = format!("[{}] {}", window_title, action);
                     log_sender
-                        .send(format!("[{}] {} を記録", timestamp, action))
+                        .send(format!("[{}] {} を記録", timestamp, display_action))
                         .ok();
 
                     Ok(())
@@ -274,6 +410,8 @@ fn main() -> Result<()> {
         ..Default::default()
     };
 
+    let log_sender_for_gui = log_sender.clone();
+
     eframe::run_native(
         "PC操作ロガー",
         options,
@@ -282,6 +420,7 @@ fn main() -> Result<()> {
                 cc,
                 is_recording_for_gui,
                 log_receiver,
+                log_sender_for_gui,
                 image_counter_for_gui,
                 session_sender,
             );
