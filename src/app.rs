@@ -108,30 +108,30 @@ impl RecorderApp {
         visuals.override_text_color = Some(kinari);
 
         visuals.widgets.noninteractive.bg_fill = sumi_black;
-        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, soft_gray);
-        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, kinari);
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0_f32, soft_gray);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0_f32, kinari);
 
         visuals.widgets.inactive.bg_fill = soft_gray;
-        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, soft_gray);
-        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, kinari);
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, soft_gray);
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, kinari);
         visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
 
         visuals.widgets.hovered.bg_fill = soft_gray_hover;
-        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, matcha);
-        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, kinari);
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, matcha);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0_f32, kinari);
         visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
 
         visuals.widgets.active.bg_fill = matcha;
-        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, matcha);
-        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, matcha);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0_f32, egui::Color32::WHITE);
         visuals.widgets.active.rounding = egui::Rounding::same(6.0);
 
         visuals.widgets.open.bg_fill = soft_gray;
-        visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0, soft_gray);
-        visuals.widgets.open.fg_stroke = egui::Stroke::new(1.0, kinari);
+        visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0_f32, soft_gray);
+        visuals.widgets.open.fg_stroke = egui::Stroke::new(1.0_f32, kinari);
 
         visuals.window_rounding = egui::Rounding::same(8.0);
-        visuals.window_stroke = egui::Stroke::new(1.0, soft_gray);
+        visuals.window_stroke = egui::Stroke::new(1.0_f32, soft_gray);
 
         cc.egui_ctx.set_visuals(visuals);
 
