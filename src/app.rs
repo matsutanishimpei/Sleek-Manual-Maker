@@ -61,8 +61,49 @@ impl RecorderApp {
             .insert(0, "BIZ_UD_Gothic".to_owned());
         
         cc.egui_ctx.set_fonts(fonts);
-        
 
+        // モダンな和風ダークスタイル（墨色ベース、低コントラストでぎらつかない）
+        let mut visuals = egui::Visuals::dark();
+        
+        let sumi_black = egui::Color32::from_rgb(30, 31, 33);     // 墨色（ベース背景）
+        let shikkoku = egui::Color32::from_rgb(22, 23, 24);       // 漆黒（より深い背景）
+        let kinari = egui::Color32::from_rgb(220, 216, 206);      // 生成り色（柔らかい文字色）
+        let matcha = egui::Color32::from_rgb(110, 133, 101);      // 抹茶色（プライマリアクセント）
+        let soft_gray = egui::Color32::from_rgb(60, 62, 66);      // ソフトグレー（枠線・ウィジェット背景）
+        let soft_gray_hover = egui::Color32::from_rgb(76, 78, 84);
+        
+        visuals.window_fill = sumi_black;
+        visuals.panel_fill = sumi_black;
+        visuals.extreme_bg_fill = shikkoku;
+        visuals.override_text_color = Some(kinari);
+        
+        visuals.widgets.noninteractive.bg_fill = sumi_black;
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, soft_gray);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, kinari);
+        
+        visuals.widgets.inactive.bg_fill = soft_gray;
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, soft_gray);
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, kinari);
+        visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
+        
+        visuals.widgets.hovered.bg_fill = soft_gray_hover;
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, matcha);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, kinari);
+        visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
+        
+        visuals.widgets.active.bg_fill = matcha;
+        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, matcha);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, shikkoku);
+        visuals.widgets.active.rounding = egui::Rounding::same(6.0);
+        
+        visuals.widgets.open.bg_fill = soft_gray;
+        visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0, soft_gray);
+        visuals.widgets.open.fg_stroke = egui::Stroke::new(1.0, kinari);
+        
+        visuals.window_rounding = egui::Rounding::same(8.0);
+        visuals.window_stroke = egui::Stroke::new(1.0, soft_gray);
+        
+        cc.egui_ctx.set_visuals(visuals);
 
         #[cfg(debug_assertions)]
         let debug_monitor_info = {
@@ -208,17 +249,27 @@ impl RecorderApp {
 
     fn render_idle(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("🎥 PC操作ロガー");
+            ui.horizontal(|ui| {
+                ui.heading(egui::RichText::new("🎥 PC操作ロガー").strong());
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                    .size(12.0)
+                    .color(egui::Color32::from_rgb(130, 130, 130)));
+            });
             ui.add_space(20.0);
 
             ui.label(
                 egui::RichText::new("待機中")
-                    .size(20.0)
-                    .color(egui::Color32::from_rgb(100, 100, 100))
+                    .size(18.0)
+                    .color(egui::Color32::from_rgb(130, 130, 130))
             );
             ui.add_space(20.0);
 
-            if ui.add(egui::Button::new("▶ 録画開始").min_size(egui::vec2(150.0, 50.0))).clicked() {
+            let start_btn = egui::Button::new(egui::RichText::new("▶ 録画開始").color(egui::Color32::from_rgb(22, 23, 24)).strong())
+                .fill(egui::Color32::from_rgb(110, 133, 101))
+                .min_size(egui::vec2(150.0, 50.0));
+
+            if ui.add(start_btn).clicked() {
                 self.start_recording();
             }
 
@@ -236,7 +287,7 @@ impl RecorderApp {
                 ui.add_space(10.0);
                 ui.label(
                     egui::RichText::new("📋 前回セッションのログ:")
-                        .color(egui::Color32::from_rgb(120, 120, 120))
+                        .color(egui::Color32::from_rgb(150, 150, 150))
                 );
                 ui.add_space(5.0);
                 let recent: Vec<&String> = self.log_messages.iter().rev().take(5).collect();
@@ -244,7 +295,7 @@ impl RecorderApp {
                     ui.label(
                         egui::RichText::new(msg)
                             .size(13.0)
-                            .color(egui::Color32::from_rgb(80, 80, 80))
+                            .color(egui::Color32::from_rgb(130, 130, 130))
                     );
                 }
             }
@@ -253,25 +304,36 @@ impl RecorderApp {
     
     fn render_recording(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("🎥 PC操作ロガー");
+            ui.horizontal(|ui| {
+                ui.heading(egui::RichText::new("🎥 PC操作ロガー").strong());
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                    .size(12.0)
+                    .color(egui::Color32::from_rgb(130, 130, 130)));
+            });
             ui.add_space(10.0);
 
             ui.label(
                 egui::RichText::new("● 録画中")
-                    .size(20.0)
-                    .color(egui::Color32::from_rgb(255, 50, 50))
+                    .size(18.0)
+                    .color(egui::Color32::from_rgb(176, 73, 73))
             );
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new("⏹ 録画停止").min_size(egui::vec2(120.0, 40.0))).clicked() {
+                let stop_btn = egui::Button::new(egui::RichText::new("⏹ 録画停止").color(egui::Color32::from_rgb(22, 23, 24)).strong())
+                    .fill(egui::Color32::from_rgb(93, 116, 141))
+                    .min_size(egui::vec2(120.0, 40.0));
+                if ui.add(stop_btn).clicked() {
                     self.stop_recording();
                 }
+                
                 ui.add_space(20.0);
-                if ui.add(egui::Button::new(egui::RichText::new("🗑 録画をキャンセル").color(egui::Color32::WHITE))
-                    .fill(egui::Color32::from_rgb(200, 50, 50))
-                    .min_size(egui::vec2(150.0, 40.0)))
-                    .clicked() {
+                
+                let cancel_btn = egui::Button::new(egui::RichText::new("🗑 録画をキャンセル").color(egui::Color32::from_rgb(242, 240, 235)).strong())
+                    .fill(egui::Color32::from_rgb(166, 68, 68))
+                    .min_size(egui::vec2(150.0, 40.0));
+                if ui.add(cancel_btn).clicked() {
                     self.cancel_recording();
                 }
             });
@@ -294,7 +356,13 @@ impl RecorderApp {
     
     fn render_review(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading(egui::RichText::new("📸 録画セッションの完了").size(24.0).strong());
+            ui.horizontal(|ui| {
+                ui.heading(egui::RichText::new("📸 録画セッションの完了").strong());
+                ui.add_space(5.0);
+                ui.label(egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                    .size(12.0)
+                    .color(egui::Color32::from_rgb(130, 130, 130)));
+            });
             ui.add_space(15.0);
 
             let session_size = self.get_session_size_mb();
@@ -328,15 +396,19 @@ impl RecorderApp {
             ui.add_space(20.0);
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(egui::RichText::new("✅ HTML手順書を生成してブラウザで開く").size(14.0).strong())
-                    .min_size(egui::vec2(250.0, 45.0))).clicked() {
+                let save_btn = egui::Button::new(egui::RichText::new("✅ HTML手順書を生成してブラウザで開く").color(egui::Color32::from_rgb(22, 23, 24)).strong())
+                    .fill(egui::Color32::from_rgb(110, 133, 101))
+                    .min_size(egui::vec2(250.0, 45.0));
+                if ui.add(save_btn).clicked() {
                     self.finish_review();
                 }
+                
                 ui.add_space(15.0);
-                if ui.add(egui::Button::new(egui::RichText::new("🗑 キャンセルして破棄").color(egui::Color32::WHITE).size(14.0))
-                    .fill(egui::Color32::from_rgb(200, 50, 50))
-                    .min_size(egui::vec2(180.0, 45.0)))
-                    .clicked() {
+                
+                let discard_btn = egui::Button::new(egui::RichText::new("🗑 キャンセルして破棄").color(egui::Color32::from_rgb(242, 240, 235)).strong())
+                    .fill(egui::Color32::from_rgb(166, 68, 68))
+                    .min_size(egui::vec2(180.0, 45.0));
+                if ui.add(discard_btn).clicked() {
                     self.cancel_recording();
                 }
             });
@@ -346,14 +418,14 @@ impl RecorderApp {
             ui.add_space(15.0);
 
             ui.vertical(|ui| {
-                ui.label(egui::RichText::new("💡 各ステップの編集について").color(egui::Color32::from_rgb(120, 120, 120)).strong());
+                ui.label(egui::RichText::new("💡 各ステップの編集について").color(egui::Color32::from_rgb(150, 150, 150)).strong());
                 ui.add_space(5.0);
-                ui.label(egui::RichText::new("・不要なステップの削除や並び替え").color(egui::Color32::from_rgb(100, 100, 100)));
-                ui.label(egui::RichText::new("・赤点マーカー（クリック座標）のON/OFF切り替え").color(egui::Color32::from_rgb(100, 100, 100)));
-                ui.label(egui::RichText::new("・個人情報などを隠す「黒塗りマスク」の追加").color(egui::Color32::from_rgb(100, 100, 100)));
-                ui.label(egui::RichText::new("・各ステップの説明文の直接入力").color(egui::Color32::from_rgb(100, 100, 100)));
+                ui.label(egui::RichText::new("・不要なステップの削除や並び替え").color(egui::Color32::from_rgb(130, 130, 130)));
+                ui.label(egui::RichText::new("・赤点マーカー（クリック座標）のON/OFF切り替え").color(egui::Color32::from_rgb(130, 130, 130)));
+                ui.label(egui::RichText::new("・個人情報などを隠す「黒塗りマスク」の追加").color(egui::Color32::from_rgb(130, 130, 130)));
+                ui.label(egui::RichText::new("・各ステップの説明文の直接入力").color(egui::Color32::from_rgb(130, 130, 130)));
                 ui.add_space(5.0);
-                ui.label(egui::RichText::new("これらは全て、生成されたHTML上で直感的に行うことができます。").color(egui::Color32::from_rgb(100, 100, 100)).italics());
+                ui.label(egui::RichText::new("これらは全て、生成されたHTML上で直感的に行うことができます。").color(egui::Color32::from_rgb(130, 130, 130)).italics());
             });
         });
     }
