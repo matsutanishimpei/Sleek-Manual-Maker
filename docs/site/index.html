@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SleekManualMaker | PC操作をそのまま手順書に</title>
+    <meta
+      name="description"
+      content="SleekManualMakerは、PC操作を記録してスクリーンショット付きHTML手順書を作成するWindows向けツールです。"
+    >
+    <meta property="og:title" content="SleekManualMaker">
+    <meta
+      property="og:description"
+      content="クリックやキー操作を記録し、画像埋め込み済みのHTML手順書を作成します。"
+    >
+    <meta property="og:type" content="website">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="SleekManualMaker home">
+        <span class="brand-mark">S</span>
+        <span>SleekManualMaker</span>
+      </a>
+      <nav class="top-nav" aria-label="主要リンク">
+        <a href="#download">ダウンロード</a>
+        <a href="#features">特徴</a>
+        <a href="terms.html">利用規約</a>
+        <a href="privacy.html">プライバシー</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Windows向け PC操作記録ツール</p>
+          <h1>PC操作を、あとから編集できる手順書に。</h1>
+          <p class="lead">
+            SleekManualMakerは、クリックやキー操作のタイミングで画面を記録し、
+            画像を埋め込んだHTML手順書を作成するデスクトップアプリです。
+          </p>
+          <div class="hero-actions" id="download">
+            <a class="primary-button" href="https://github.com/matsutanishimpei/Sleek-Manual-Maker/releases/latest/download/SleekManualMaker.zip">
+              最新版をダウンロード
+            </a>
+            <a class="secondary-button" href="https://github.com/matsutanishimpei/Sleek-Manual-Maker/releases/latest">
+              リリースノートを見る
+            </a>
+          </div>
+          <p class="download-note">
+            ZIPを展開し、<code>SleekManualMaker.exe</code> を起動してください。Windows SmartScreenが表示された場合は、内容を確認して実行してください。
+          </p>
+        </div>
+
+        <div class="product-panel" aria-label="SleekManualMakerの画面イメージ">
+          <div class="window-bar">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="recorder-preview">
+            <div>
+              <p class="preview-title">Recording session</p>
+              <p class="preview-subtitle">操作を記録中</p>
+            </div>
+            <div class="record-dot"></div>
+          </div>
+          <div class="step-preview">
+            <div class="screen-thumb">
+              <span class="cursor-dot"></span>
+            </div>
+            <div class="step-lines">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+          <div class="export-preview">
+            <span>HTML</span>
+            <strong>画像埋め込み済み</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="trust-strip" aria-label="品質情報">
+        <div>
+          <strong>ローカル保存</strong>
+          <span>記録データはPC内に保存</span>
+        </div>
+        <div>
+          <strong>HTML出力</strong>
+          <span>画像ファイルの同梱が不要</span>
+        </div>
+        <div>
+          <strong>自動リリース</strong>
+          <span>GitHub Releasesで配布</span>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-heading">
+          <p class="eyebrow">Features</p>
+          <h2>手順書作成の面倒な部分を減らします。</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>操作ごとに画面を記録</h3>
+            <p>クリックやキー操作を検知し、その時点のスクリーンショットとログを保存します。</p>
+          </article>
+          <article>
+            <h3>レビューしてから保存</h3>
+            <p>停止後に件数や容量を確認し、不要な記録はキャンセルできます。</p>
+          </article>
+          <article>
+            <h3>HTML上で編集</h3>
+            <p>生成された手順書はブラウザで開き、説明文の追記や不要ステップの削除ができます。</p>
+          </article>
+          <article>
+            <h3>画像をHTMLに埋め込み</h3>
+            <p>スクリーンショットをBase64で埋め込むため、HTMLファイル単体で共有しやすくなります。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section muted">
+        <div class="section-heading">
+          <p class="eyebrow">Usage</p>
+          <h2>基本の流れ</h2>
+        </div>
+        <ol class="flow-list">
+          <li><span>1</span>アプリを起動して記録を開始します。</li>
+          <li><span>2</span>普段どおりにPCを操作します。</li>
+          <li><span>3</span>停止後、記録内容を確認して保存します。</li>
+          <li><span>4</span>HTML手順書をブラウザで編集・共有します。</li>
+        </ol>
+      </section>
+
+      <section class="section notice">
+        <div>
+          <p class="eyebrow">Before Use</p>
+          <h2>記録前に確認してください。</h2>
+        </div>
+        <p>
+          このアプリは画面内容と操作ログを保存します。個人情報、社外秘資料、認証情報などが画面に表示されている状態で記録しないよう注意してください。
+          詳細は <a href="privacy.html">プライバシーポリシー</a> と <a href="terms.html">利用規約</a> を確認してください。
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>© SleekManualMaker</span>
+      <span>
+        <a href="https://github.com/matsutanishimpei/Sleek-Manual-Maker">GitHub</a>
+        <a href="terms.html">利用規約</a>
+        <a href="privacy.html">プライバシーポリシー</a>
+      </span>
+    </footer>
+  </body>
+</html>
