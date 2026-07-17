@@ -25,6 +25,7 @@
       <nav class="top-nav" aria-label="主要リンク">
         <a href="#download">ダウンロード</a>
         <a href="#features">特徴</a>
+        <a href="#screens">画面</a>
         <a href="terms.html">利用規約</a>
         <a href="privacy.html">プライバシー</a>
       </nav>
@@ -52,32 +53,12 @@
           </p>
         </div>
 
-        <div class="product-panel" aria-label="SleekManualMakerの画面イメージ">
-          <div class="window-bar">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="recorder-preview">
-            <div>
-              <p class="preview-title">Recording session</p>
-              <p class="preview-subtitle">操作を記録中</p>
-            </div>
-            <div class="record-dot"></div>
-          </div>
-          <div class="step-preview">
-            <div class="screen-thumb">
-              <span class="cursor-dot"></span>
-            </div>
-            <div class="step-lines">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-          </div>
-          <div class="export-preview">
-            <span>HTML</span>
-            <strong>画像埋め込み済み</strong>
-          </div>
-        </div>
+        <figure class="hero-shot">
+          <img src="assets/manual-output.png" alt="SleekManualMakerで生成した操作手順書の画面">
+          <figcaption>
+            記録した操作は、スクリーンショット付きのHTML手順書として出力されます。
+          </figcaption>
+        </figure>
       </section>
 
       <section class="trust-strip" aria-label="品質情報">
@@ -117,6 +98,43 @@
             <h3>画像をHTMLに埋め込み</h3>
             <p>スクリーンショットをBase64で埋め込むため、HTMLファイル単体で共有しやすくなります。</p>
           </article>
+        </div>
+      </section>
+
+      <section class="section screenshots" id="screens">
+        <div class="section-heading">
+          <p class="eyebrow">Screens</p>
+          <h2>記録から手順書化まで、画面はシンプルです。</h2>
+        </div>
+        <div class="screen-grid">
+          <figure>
+            <img src="assets/app-idle.png" alt="待機中のPC操作ロガー画面">
+            <figcaption>
+              <strong>待機中</strong>
+              録画開始ボタンを押すだけで、操作記録を始められます。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="assets/app-recording.png" alt="録画中のPC操作ロガー画面">
+            <figcaption>
+              <strong>録画中</strong>
+              記録中は停止とキャンセルを明確に分けて操作できます。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="assets/app-summary.png" alt="録画セッション完了後のサマリー画面">
+            <figcaption>
+              <strong>完了確認</strong>
+              記録ステップ数、容量、保存先を確認してからHTMLを生成します。
+            </figcaption>
+          </figure>
+          <figure>
+            <img src="assets/manual-output.png" alt="生成された操作手順書の画面">
+            <figcaption>
+              <strong>HTML手順書</strong>
+              クリック位置の拡大、赤点表示、説明文の入力までブラウザ上で行えます。
+            </figcaption>
+          </figure>
         </div>
       </section>
 
