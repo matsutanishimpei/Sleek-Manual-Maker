@@ -62,8 +62,7 @@ impl RecorderApp {
         
         cc.egui_ctx.set_fonts(fonts);
         
-        // 画像ローダーをインストール
-        egui_extras::install_image_loaders(&cc.egui_ctx);
+
 
         #[cfg(debug_assertions)]
         let debug_monitor_info = {
