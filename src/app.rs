@@ -65,12 +65,12 @@ impl RecorderApp {
         // モダンな和風ダークスタイル（墨色ベース、低コントラストでぎらつかない）
         let mut visuals = egui::Visuals::dark();
         
-        let sumi_black = egui::Color32::from_rgb(30, 31, 33);     // 墨色（ベース背景）
-        let shikkoku = egui::Color32::from_rgb(22, 23, 24);       // 漆黒（より深い背景）
-        let kinari = egui::Color32::from_rgb(220, 216, 206);      // 生成り色（柔らかい文字色）
-        let matcha = egui::Color32::from_rgb(110, 133, 101);      // 抹茶色（プライマリアクセント）
-        let soft_gray = egui::Color32::from_rgb(60, 62, 66);      // ソフトグレー（枠線・ウィジェット背景）
-        let soft_gray_hover = egui::Color32::from_rgb(76, 78, 84);
+        let sumi_black = egui::Color32::from_rgb(32, 38, 34);     // 利休鼠暗（緑がかった墨色：うっすら色付け）
+        let shikkoku = egui::Color32::from_rgb(24, 28, 25);       // 深利休鼠（より深い背景）
+        let kinari = egui::Color32::from_rgb(230, 226, 215);      // 生成り色（読みやすさ向上のため輝度アップ）
+        let matcha = egui::Color32::from_rgb(86, 115, 80);        // 抹茶色（ボタン視認性向上のためやや鮮やかに）
+        let soft_gray = egui::Color32::from_rgb(65, 72, 67);      // ソフトグレー緑（枠線）
+        let soft_gray_hover = egui::Color32::from_rgb(80, 88, 82);
         
         visuals.window_fill = sumi_black;
         visuals.panel_fill = sumi_black;
@@ -93,7 +93,7 @@ impl RecorderApp {
         
         visuals.widgets.active.bg_fill = matcha;
         visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, matcha);
-        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, shikkoku);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
         visuals.widgets.active.rounding = egui::Rounding::same(6.0);
         
         visuals.widgets.open.bg_fill = soft_gray;
@@ -265,8 +265,8 @@ impl RecorderApp {
             );
             ui.add_space(20.0);
 
-            let start_btn = egui::Button::new(egui::RichText::new("▶ 録画開始").color(egui::Color32::from_rgb(22, 23, 24)).strong())
-                .fill(egui::Color32::from_rgb(110, 133, 101))
+            let start_btn = egui::Button::new(egui::RichText::new("▶ 録画開始").color(egui::Color32::WHITE).strong())
+                .fill(egui::Color32::from_rgb(86, 115, 80))
                 .min_size(egui::vec2(150.0, 50.0));
 
             if ui.add(start_btn).clicked() {
@@ -321,8 +321,8 @@ impl RecorderApp {
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {
-                let stop_btn = egui::Button::new(egui::RichText::new("⏹ 録画停止").color(egui::Color32::from_rgb(22, 23, 24)).strong())
-                    .fill(egui::Color32::from_rgb(93, 116, 141))
+                let stop_btn = egui::Button::new(egui::RichText::new("⏹ 録画停止").color(egui::Color32::WHITE).strong())
+                    .fill(egui::Color32::from_rgb(76, 107, 133))
                     .min_size(egui::vec2(120.0, 40.0));
                 if ui.add(stop_btn).clicked() {
                     self.stop_recording();
@@ -330,7 +330,7 @@ impl RecorderApp {
                 
                 ui.add_space(20.0);
                 
-                let cancel_btn = egui::Button::new(egui::RichText::new("🗑 録画をキャンセル").color(egui::Color32::from_rgb(242, 240, 235)).strong())
+                let cancel_btn = egui::Button::new(egui::RichText::new("🗑 録画をキャンセル").color(egui::Color32::WHITE).strong())
                     .fill(egui::Color32::from_rgb(166, 68, 68))
                     .min_size(egui::vec2(150.0, 40.0));
                 if ui.add(cancel_btn).clicked() {
@@ -396,8 +396,8 @@ impl RecorderApp {
             ui.add_space(20.0);
 
             ui.horizontal(|ui| {
-                let save_btn = egui::Button::new(egui::RichText::new("✅ HTML手順書を生成してブラウザで開く").color(egui::Color32::from_rgb(22, 23, 24)).strong())
-                    .fill(egui::Color32::from_rgb(110, 133, 101))
+                let save_btn = egui::Button::new(egui::RichText::new("✅ HTML手順書を生成してブラウザで開く").color(egui::Color32::WHITE).strong())
+                    .fill(egui::Color32::from_rgb(86, 115, 80))
                     .min_size(egui::vec2(250.0, 45.0));
                 if ui.add(save_btn).clicked() {
                     self.finish_review();
@@ -405,7 +405,7 @@ impl RecorderApp {
                 
                 ui.add_space(15.0);
                 
-                let discard_btn = egui::Button::new(egui::RichText::new("🗑 キャンセルして破棄").color(egui::Color32::from_rgb(242, 240, 235)).strong())
+                let discard_btn = egui::Button::new(egui::RichText::new("🗑 キャンセルして破棄").color(egui::Color32::WHITE).strong())
                     .fill(egui::Color32::from_rgb(166, 68, 68))
                     .min_size(egui::vec2(180.0, 45.0));
                 if ui.add(discard_btn).clicked() {
